@@ -73,7 +73,7 @@ function ConversionViewerContent() {
   const fetchChapters = useCallback(async () => {
     try {
       const { data, error: fetchError } = await supabase
-        .from("textbook_chapters")
+        .from("chapters")
         .select("*")
         .eq("conversion_id", conversionId)
         .order("level", { ascending: true })

@@ -105,13 +105,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!body.ai_provider || !["claude", "openai", "grok"].includes(body.ai_provider)) {
-      return NextResponse.json(
-        { error: "Valid AI provider is required (claude, openai, or grok)" },
-        { status: 400 }
-      );
-    }
-
     // Fetch the conversion
     const { data: conversion, error: fetchError } = await supabase
       .from("conversions")
@@ -143,7 +136,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const provider = body.ai_provider;
+    const provider = (body.ai_provider || conversion.ai_provider || "claude") as AIProvider;
     const sourceContent = conversion.source_content as string;
     const title = conversion.title as string;
 

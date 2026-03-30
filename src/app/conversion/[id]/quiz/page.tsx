@@ -290,7 +290,7 @@ function QuizContent() {
           level,
           answers: questions.map((q, i) => ({
             question_id: q.id,
-            selected_answer: finalAnswers[i],
+            selected: finalAnswers[i],
           })),
         }),
       });

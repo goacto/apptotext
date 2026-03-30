@@ -18,6 +18,7 @@ export interface Conversion {
   title: string;
   description: string;
   ai_provider: AIProvider;
+  is_public: boolean;
   created_at: string;
   updated_at: string;
 }

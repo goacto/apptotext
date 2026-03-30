@@ -120,7 +120,7 @@ function DashboardContent() {
       if (conversionsList.length > 0) {
         const conversionIds = conversionsList.map((c) => c.id);
         const { data: chaptersData } = await supabase
-          .from("textbook_chapters")
+          .from("chapters")
           .select("conversion_id, level")
           .in("conversion_id", conversionIds);
 
@@ -209,24 +209,20 @@ function DashboardContent() {
       const conversion = conversions.find((c) => c.id === conversionId);
       if (!conversion) return;
 
-      // Toggle shared status by inserting/removing from community_shares
-      const { data: existing } = await supabase
-        .from("community_shares")
-        .select("id")
-        .eq("conversion_id", conversionId)
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const newIsPublic = !conversion.is_public;
 
-      if (existing) {
-        await supabase
-          .from("community_shares")
-          .delete()
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("community_shares").insert({
-          conversion_id: conversionId,
-          user_id: user.id,
-        });
+      const { error: updateError } = await supabase
+        .from("conversions")
+        .update({ is_public: newIsPublic })
+        .eq("id", conversionId)
+        .eq("user_id", user.id);
+
+      if (!updateError) {
+        setConversions((prev) =>
+          prev.map((c) =>
+            c.id === conversionId ? { ...c, is_public: newIsPublic } : c
+          )
+        );
       }
     } catch (error) {
       console.error("Share toggle failed:", error);
@@ -491,7 +487,7 @@ function DashboardContent() {
                       Continue Learning
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant={conversion.is_public ? "secondary" : "ghost"}
                       size="sm"
                       disabled={sharingIds.has(conversion.id)}
                       onClick={() => handleShareToggle(conversion.id)}
@@ -502,7 +498,7 @@ function DashboardContent() {
                       ) : (
                         <Share2 className="size-3.5" />
                       )}
-                      Share with Community
+                      {conversion.is_public ? "Shared" : "Share"}
                     </Button>
                   </CardFooter>
                 </Card>
