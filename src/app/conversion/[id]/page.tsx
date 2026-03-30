@@ -217,7 +217,7 @@ function ConversionViewerContent() {
                 >
                   <ArrowLeft className="size-4" />
                 </Button>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl line-clamp-2">
                   {conversion.title}
                 </h1>
               </div>

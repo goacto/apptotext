@@ -216,7 +216,7 @@ function LeaderboardContent() {
 
       {/* Current User Stats Banner */}
       {currentUserProfile && (
-        <Card className="border-none bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5">
+        <Card className="border-none bg-linear-to-r from-primary/5 via-primary/10 to-primary/5">
           <CardContent className="py-2">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
               <div className="flex items-center gap-3">
@@ -411,7 +411,7 @@ function LeaderboardContent() {
         </Card>
 
         {/* Encouraging Message */}
-        <Card className="border-none bg-gradient-to-r from-green-500/5 via-emerald-500/10 to-green-500/5">
+        <Card className="border-none bg-linear-to-r from-green-500/5 via-emerald-500/10 to-green-500/5">
           <CardContent className="py-4 text-center">
             <p className="text-sm italic text-muted-foreground">
               &quot;Every conversion you share plants a seed of understanding for
@@ -488,7 +488,8 @@ function LeaderboardTable({
         return (
           <div
             key={row.user_id}
-            className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
+            tabIndex={0}
+            className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               isCurrentUser
                 ? "bg-primary/5 ring-1 ring-primary/20"
                 : "hover:bg-muted/50"

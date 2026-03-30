@@ -164,9 +164,9 @@ export default function Home() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10"
         >
-          <div className="absolute -top-40 right-0 h-[600px] w-[600px] rounded-full bg-primary/5 blur-3xl" />
-          <div className="absolute -bottom-20 left-0 h-[400px] w-[400px] rounded-full bg-accent/10 blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/3 blur-3xl" />
+          <div className="absolute -top-40 right-0 h-150 w-150 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute -bottom-20 left-0 h-100 w-100 rounded-full bg-accent/10 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 h-75 w-75 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/3 blur-3xl" />
         </div>
 
         <div className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
@@ -182,7 +182,7 @@ export default function Home() {
             {/* Headline */}
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
               Transform Any Codebase Into a{" "}
-              <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 Complete Learning Journey
               </span>
             </h1>
@@ -382,7 +382,7 @@ export default function Home() {
             <div className="relative">
               <div
                 aria-hidden="true"
-                className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-gradient-to-b from-emerald-300 via-blue-400 to-amber-400 opacity-30 md:block"
+                className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-linear-to-b from-emerald-300 via-blue-400 to-amber-400 opacity-30 md:block"
               />
 
               <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
@@ -401,7 +401,7 @@ export default function Home() {
                         </div>
                         <CardTitle className="mt-2">
                           <span
-                            className={`bg-gradient-to-r ${levelColors[level.level]} bg-clip-text text-lg font-bold text-transparent`}
+                            className={`bg-linear-to-r ${levelColors[level.level]} bg-clip-text text-lg font-bold text-transparent`}
                           >
                             {level.level}
                           </span>
@@ -497,7 +497,7 @@ export default function Home() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10"
         >
-          <div className="absolute top-1/2 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 h-125 w-125 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
         </div>
 
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">

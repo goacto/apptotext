@@ -350,71 +350,34 @@ function SettingsContent() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => handleThemeChange("light")}
-              className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                theme === "light"
-                  ? "border-primary bg-primary/5"
-                  : "border-transparent hover:border-muted-foreground/25"
-              }`}
-            >
-              <Sun
-                className={`size-6 ${
-                  theme === "light" ? "text-primary" : "text-muted-foreground"
-                }`}
-              />
-              <span
-                className={`text-sm font-medium ${
-                  theme === "light" ? "text-primary" : "text-muted-foreground"
+            {([
+              { value: "light" as const, label: "Light", Icon: Sun },
+              { value: "dark" as const, label: "Dark", Icon: Moon },
+              { value: "system" as const, label: "System", Icon: Monitor },
+            ]).map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                onClick={() => handleThemeChange(value)}
+                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  theme === value
+                    ? "border-primary bg-primary/5"
+                    : "border-transparent hover:border-muted-foreground/25"
                 }`}
               >
-                Light
-              </span>
-            </button>
-
-            <button
-              onClick={() => handleThemeChange("dark")}
-              className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                theme === "dark"
-                  ? "border-primary bg-primary/5"
-                  : "border-transparent hover:border-muted-foreground/25"
-              }`}
-            >
-              <Moon
-                className={`size-6 ${
-                  theme === "dark" ? "text-primary" : "text-muted-foreground"
-                }`}
-              />
-              <span
-                className={`text-sm font-medium ${
-                  theme === "dark" ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                Dark
-              </span>
-            </button>
-
-            <button
-              onClick={() => handleThemeChange("system")}
-              className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                theme === "system"
-                  ? "border-primary bg-primary/5"
-                  : "border-transparent hover:border-muted-foreground/25"
-              }`}
-            >
-              <Monitor
-                className={`size-6 ${
-                  theme === "system" ? "text-primary" : "text-muted-foreground"
-                }`}
-              />
-              <span
-                className={`text-sm font-medium ${
-                  theme === "system" ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                System
-              </span>
-            </button>
+                <Icon
+                  className={`size-6 ${
+                    theme === value ? "text-primary" : "text-muted-foreground"
+                  }`}
+                />
+                <span
+                  className={`text-sm font-medium ${
+                    theme === value ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </span>
+              </button>
+            ))}
           </div>
         </CardContent>
       </Card>

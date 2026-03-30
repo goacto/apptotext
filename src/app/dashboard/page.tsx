@@ -310,6 +310,7 @@ function DashboardContent() {
         <CardContent>
           <form onSubmit={handleQuickConvert} className="flex flex-col gap-3 sm:flex-row">
             <Input
+              id="convert-url"
               type="url"
               placeholder="https://github.com/user/repo or any website URL"
               value={convertUrl}
@@ -411,13 +412,22 @@ function DashboardContent() {
 
         {conversions.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <BookOpen className="mb-3 size-10 text-muted-foreground/50" />
-              <h3 className="font-medium">No conversions yet</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Use the Quick Convert above to transform your first codebase or
-                website into a learning textbook.
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="mb-4 rounded-full bg-primary/10 p-4">
+                <BookOpen className="size-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">No conversions yet</h3>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                Paste a GitHub repo or website URL above to transform it into a
+                complete learning textbook.
               </p>
+              <Button
+                className="mt-6"
+                onClick={() => document.getElementById("convert-url")?.focus()}
+              >
+                <Rocket className="size-4" />
+                Start Your First Conversion
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -509,7 +519,7 @@ function DashboardContent() {
       </div>
 
       {/* Growth Motivation Banner */}
-      <Card className="border-none bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5">
+      <Card className="border-none bg-linear-to-r from-primary/5 via-primary/10 to-primary/5">
         <CardContent className="flex items-center gap-3 py-4 text-center sm:text-left">
           <div className="hidden shrink-0 sm:block">
             <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
