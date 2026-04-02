@@ -156,21 +156,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Update user's total XP
-    const { error: xpError } = await supabase.rpc("increment_xp", {
-      user_id_input: user.id,
-      xp_amount: xpEarned,
-    });
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("total_xp")
+      .eq("id", user.id)
+      .single();
 
-    if (xpError) {
-      console.error("Failed to update XP:", xpError.message);
+    if (currentProfile) {
+      await supabase
+        .from("profiles")
+        .update({
+          total_xp: currentProfile.total_xp + xpEarned,
+          last_activity: new Date().toISOString(),
+        })
+        .eq("id", user.id);
     }
 
     return NextResponse.json({
       session_id: session.id,
       score: correctCount,
-      total: totalQuestions,
+      total_questions: totalQuestions,
       xp_earned: xpEarned,
       perfect_score: isPerfectScore,
+      passed: isPerfectScore || (correctCount / totalQuestions >= 0.7),
       results,
     });
   } catch (error) {

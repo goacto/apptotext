@@ -15,7 +15,9 @@ export function Footer() {
           <p className="text-sm font-medium text-foreground">
             {GOACTO_SHORT}
           </p>
-          <p className="text-xs text-muted-foreground">{GOACTO_FULL}</p>
+          <p className="text-xs text-muted-foreground">
+            We are {GOACTO_FULL}
+          </p>
         </div>
 
         <div className="flex items-center gap-6">

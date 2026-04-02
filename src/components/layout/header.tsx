@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   Leaf,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -37,6 +38,7 @@ import { APP_NAME, GOACTO_SHORT } from "@/lib/constants";
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/ecosystem", label: "Ecosystem", icon: Globe },
 ];
 
 export function Header() {
@@ -63,7 +65,7 @@ export function Header() {
               {APP_NAME}
             </span>
             <span className="text-[10px] font-medium text-muted-foreground">
-              {GOACTO_SHORT}
+              by {GOACTO_SHORT}
             </span>
           </div>
         </Link>
@@ -146,7 +148,10 @@ export function Header() {
                   <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                     <Leaf className="size-3.5" />
                   </div>
-                  <span>{APP_NAME}</span>
+                  <div className="flex flex-col leading-none">
+                    <span className="text-sm font-semibold">{APP_NAME}</span>
+                    <span className="text-[10px] text-muted-foreground">by {GOACTO_SHORT}</span>
+                  </div>
                 </SheetTitle>
               </SheetHeader>
               <Separator />

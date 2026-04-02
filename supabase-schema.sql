@@ -284,6 +284,19 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ============================================================
+-- FUNCTION: Increment user XP
+-- ============================================================
+create or replace function public.increment_xp(user_id_input uuid, xp_amount integer)
+returns void as $$
+begin
+  update public.profiles
+  set total_xp = total_xp + xp_amount,
+      last_activity = now()
+  where id = user_id_input;
+end;
+$$ language plpgsql security definer;
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 create index if not exists idx_conversions_user_id on public.conversions(user_id);

@@ -253,9 +253,9 @@ function ConversionViewerContent() {
           {/* Content area */}
           <div className="flex-1 min-w-0">
             <Tabs
-              value={activeLevel}
+              value={String(activeLevel)}
               onValueChange={(value) =>
-                setActiveLevel(value as unknown as TextbookLevel)
+                setActiveLevel(Number(value) as TextbookLevel)
               }
             >
               <TabsList className="w-full justify-start overflow-x-auto">
@@ -264,7 +264,7 @@ function ConversionViewerContent() {
                   return (
                     <TabsTrigger
                       key={level.level}
-                      value={level.level}
+                      value={String(level.level)}
                       className="gap-2"
                     >
                       <span>{level.level}</span>
@@ -278,7 +278,7 @@ function ConversionViewerContent() {
               </TabsList>
 
               {TEXTBOOK_LEVELS.map((level) => (
-                <TabsContent key={level.level} value={level.level}>
+                <TabsContent key={level.level} value={String(level.level)}>
                   {/* Level description */}
                   <div className="mb-6 mt-4">
                     <p className="text-sm text-muted-foreground">
@@ -437,30 +437,28 @@ function ConversionViewerContent() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      render={
-                        <Link
-                          href={`/conversion/${conversionId}/flashcards?level=${activeLevel}`}
-                        />
-                      }
+                    <Link
+                      href={`/conversion/${conversionId}/flashcards?level=${activeLevel}`}
                     >
-                      <Layers className="size-4" />
-                      Study Flashcards
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      render={
-                        <Link
-                          href={`/conversion/${conversionId}/quiz?level=${activeLevel}`}
-                        />
-                      }
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                      >
+                        <Layers className="size-4" />
+                        Study Flashcards
+                      </Button>
+                    </Link>
+                    <Link
+                      href={`/conversion/${conversionId}/quiz?level=${activeLevel}`}
                     >
-                      <BrainCircuit className="size-4" />
-                      Take Quiz
-                    </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                      >
+                        <BrainCircuit className="size-4" />
+                        Take Quiz
+                      </Button>
+                    </Link>
                   </CardContent>
                 </Card>
               )}

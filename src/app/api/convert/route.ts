@@ -373,20 +373,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Award XP for creating a conversion
-    const { error: xpError } = await supabase.rpc("increment_xp", {
-      user_id_input: user.id,
-      xp_amount: XP_REWARDS.CONVERSION_CREATED,
-    });
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("total_xp")
+      .eq("id", user.id)
+      .single();
 
-    if (xpError) {
-      // Log but don't fail the request over XP
-      console.error("Failed to award XP:", xpError.message);
+    if (currentProfile) {
+      await supabase
+        .from("profiles")
+        .update({
+          total_xp: currentProfile.total_xp + XP_REWARDS.CONVERSION_CREATED,
+          last_activity: new Date().toISOString(),
+        })
+        .eq("id", user.id);
     }
 
-    return NextResponse.json(
-      { conversion },
-      { status: 201 }
-    );
+    return NextResponse.json(conversion, { status: 201 });
   } catch (error) {
     console.error("Conversion error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";

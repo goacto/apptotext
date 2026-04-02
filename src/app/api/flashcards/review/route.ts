@@ -219,13 +219,20 @@ export async function POST(request: NextRequest) {
     // Award XP for flashcard review
     const xpEarned = XP_REWARDS.FLASHCARD_REVIEWED;
 
-    const { error: xpError } = await supabase.rpc("increment_xp", {
-      user_id_input: user.id,
-      xp_amount: xpEarned,
-    });
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("total_xp")
+      .eq("id", user.id)
+      .single();
 
-    if (xpError) {
-      console.error("Failed to award XP:", xpError.message);
+    if (currentProfile) {
+      await supabase
+        .from("profiles")
+        .update({
+          total_xp: currentProfile.total_xp + xpEarned,
+          last_activity: new Date().toISOString(),
+        })
+        .eq("id", user.id);
     }
 
     return NextResponse.json({
