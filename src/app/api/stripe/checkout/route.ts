@@ -1,8 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 
-export async function POST() {
+type PlanTier = "standard" | "pro" | "master";
+
+const PLAN_CONFIG: Record<PlanTier, { price: number; name: string; description: string }> = {
+  standard: {
+    price: 499,
+    name: "AppToText Standard",
+    description: "10 generations per month, all AI providers",
+  },
+  pro: {
+    price: 999,
+    name: "AppToText Pro",
+    description: "25 generations per month, all AI providers, priority support",
+  },
+  master: {
+    price: 1499,
+    name: "AppToText Master",
+    description: "50 generations per month, all AI providers, priority support, early access",
+  },
+};
+
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -17,6 +37,19 @@ export async function POST() {
         { status: 401 }
       );
     }
+
+    // Parse plan from request body
+    let plan: PlanTier = "pro";
+    try {
+      const body = await request.json();
+      if (body.plan && body.plan in PLAN_CONFIG) {
+        plan = body.plan as PlanTier;
+      }
+    } catch {
+      // Default to pro if no body or invalid JSON
+    }
+
+    const config = PLAN_CONFIG[plan];
 
     // Get or create Stripe customer
     const { data: profile } = await supabase
@@ -49,17 +82,16 @@ export async function POST() {
           price_data: {
             currency: "usd",
             product_data: {
-              name: "AppToText Pro",
-              description:
-                "50 generations per month, all AI providers, priority support",
+              name: config.name,
+              description: config.description,
             },
-            unit_amount: 900, // $9.00
+            unit_amount: config.price,
             recurring: { interval: "month" },
           },
           quantity: 1,
         },
       ],
-      metadata: { user_id: user.id },
+      metadata: { user_id: user.id, plan },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?upgraded=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
     });

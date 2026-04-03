@@ -35,12 +35,17 @@ export async function POST(request: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.user_id;
+        const plan = session.metadata?.plan ?? "pro";
+
+        // Validate plan tier
+        const validPlans = ["standard", "pro", "master"];
+        const subscriptionStatus = validPlans.includes(plan) ? plan : "pro";
 
         if (userId && session.subscription) {
           await supabase
             .from("profiles")
             .update({
-              subscription_status: "pro",
+              subscription_status: subscriptionStatus,
               stripe_subscription_id:
                 typeof session.subscription === "string"
                   ? session.subscription
@@ -63,13 +68,16 @@ export async function POST(request: NextRequest) {
             : subscription.customer.id;
 
         const status = subscription.status;
-        const subscriptionStatus =
-          status === "active" || status === "trialing" ? "pro" : "free";
 
-        await supabase
-          .from("profiles")
-          .update({ subscription_status: subscriptionStatus })
-          .eq("stripe_customer_id", customerId);
+        if (status === "active" || status === "trialing") {
+          // Keep existing subscription_status (standard/pro/master) — don't change tier on renewal
+          // Only downgrade to free if subscription is no longer active
+        } else {
+          await supabase
+            .from("profiles")
+            .update({ subscription_status: "free" })
+            .eq("stripe_customer_id", customerId);
+        }
         break;
       }
 

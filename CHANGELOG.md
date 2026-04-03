@@ -4,6 +4,36 @@ All notable changes to AppToText are documented here.
 
 ---
 
+## [0.4.0] - 2026-04-02
+
+### Added
+- **Stripe subscription system** with 4 tiers: Free (3 generations), Standard ($4.99/mo, 10), Pro ($9.99/mo, 25), Master ($14.99/mo, 50)
+- **Pricing page** with tier comparison table and generation explainer
+- **PDF export** — browser print-to-PDF via styled iframe with GOACTO branding
+- **Markdown export** — download generated textbooks as .md files
+- **Forgot/reset password flow** — email-based password reset
+- **Error boundaries** — global error page, custom 404, route-level error boundaries
+- **Skeleton loading states** — dashboard and conversion pages show animated placeholders
+- **Ecosystem page** showing GOACTO app family (AppToText live, 3 coming soon)
+- **Changelog page** — user-facing reverse chronological release history at /changelog
+- **Coming Soon page** — user-facing roadmap at /coming-soon
+- **Custom branding** — AppToText book+leaf logo, favicon, apple-touch-icon
+
+### Fixed
+- Apostrophes rendering as `&#039;` HTML entities in generated content
+- Duplicate "Chapter 1: Chapter 1:" prefix in chapter card headers
+- Generation timeout on Vercel (now up to 60s with `maxDuration`)
+- Supabase URL typo causing "can't find server" errors
+- "Most Popular" badge clipped on pricing card
+
+### Improved
+- Flashcard and quiz generation now run in parallel (Promise.all) — cuts time nearly in half
+- Consistent AppToText logo across header, mobile menu, auth pages, and favicon
+- Footer now includes Changelog and Coming Soon links
+- Pricing clearly explains what counts as 1 generation
+
+---
+
 ## [0.3.0] - 2026-03-29
 
 ### Fixed
@@ -19,13 +49,18 @@ All notable changes to AppToText are documented here.
 
 ### Added
 - About, Privacy, and Terms pages (footer links no longer 404)
+- Profile and Settings pages
+- Ecosystem page with GOACTO app family
+- BACKLOG.md and CHANGELOG.md
 
 ### Improved
 - Error message contrast on auth pages (better readability)
 - Dashboard empty state with prominent CTA button
 - Keyboard focus states on settings theme buttons and leaderboard rows
 - Conversion title responsive text with line-clamp on mobile
-- Migrated all Tailwind classes to v4 canonical form (`bg-linear-to-*`, standard utilities)
+- Migrated all Tailwind classes to v4 canonical form
+- Header branding: "AppToText by GOACTO"
+- Footer tagline: "We are Growing Ourselves And Contributing To Others"
 
 ---
 

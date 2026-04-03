@@ -3,6 +3,8 @@ import { GOACTO_FULL, GOACTO_SHORT } from "@/lib/constants";
 
 const footerLinks = [
   { href: "/about", label: "About" },
+  { href: "/changelog", label: "Changelog" },
+  { href: "/coming-soon", label: "Coming Soon" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
 ];

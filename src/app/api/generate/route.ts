@@ -111,9 +111,13 @@ export async function POST(request: NextRequest) {
     // Check generation limits
     const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
     if (!allowed) {
-      const message = plan === "free"
-        ? "Free tier limit reached (2 generations). Upgrade to Pro for 50 generations/month."
-        : "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.";
+      const limitMessages: Record<string, string> = {
+        free: "Free tier limit reached (3 generations). Upgrade to a paid plan for more generations per month.",
+        standard: "Monthly generation limit reached (10). Upgrade to Pro for 25/month or Master for 50/month, or wait for your next billing cycle.",
+        pro: "Monthly generation limit reached (25). Upgrade to Master for 50/month, or wait for your next billing cycle.",
+        master: "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.",
+      };
+      const message = limitMessages[plan] ?? limitMessages.free;
       return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
     }
 

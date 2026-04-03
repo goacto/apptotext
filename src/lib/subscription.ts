@@ -1,7 +1,11 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-const FREE_GENERATION_LIMIT = 2;
-const PRO_GENERATION_LIMIT = 50;
+const FREE_GENERATION_LIMIT = 3;
+const STANDARD_GENERATION_LIMIT = 10;
+const PRO_GENERATION_LIMIT = 25;
+const MASTER_GENERATION_LIMIT = 50;
+
+type PlanTier = "free" | "standard" | "pro" | "master";
 
 interface SubscriptionStatus {
   subscription_status: string;
@@ -14,7 +18,24 @@ interface SubscriptionStatus {
 interface CanGenerateResult {
   allowed: boolean;
   remaining: number;
-  plan: "free" | "pro";
+  plan: PlanTier;
+}
+
+/**
+ * Returns the generation limit for a given plan tier.
+ */
+function getLimitForPlan(plan: PlanTier): number {
+  switch (plan) {
+    case "master":
+      return MASTER_GENERATION_LIMIT;
+    case "pro":
+      return PRO_GENERATION_LIMIT;
+    case "standard":
+      return STANDARD_GENERATION_LIMIT;
+    case "free":
+    default:
+      return FREE_GENERATION_LIMIT;
+  }
 }
 
 /**
@@ -41,8 +62,10 @@ export async function getUserSubscription(
 
 /**
  * Checks whether the user is allowed to generate content.
- * - Free users: lifetime limit of 2 generations
- * - Pro users: 50 generations per billing cycle
+ * - Free users: lifetime limit of 3 generations
+ * - Standard users: 10 generations per billing cycle
+ * - Pro users: 25 generations per billing cycle
+ * - Master users: 50 generations per billing cycle
  */
 export async function canGenerate(
   supabase: SupabaseClient,
@@ -54,24 +77,25 @@ export async function canGenerate(
     return { allowed: false, remaining: 0, plan: "free" };
   }
 
-  const isPro = subscription.subscription_status === "pro";
+  const status = subscription.subscription_status;
   const count = subscription.generation_count ?? 0;
 
-  if (isPro) {
-    const remaining = Math.max(0, PRO_GENERATION_LIMIT - count);
-    return {
-      allowed: remaining > 0,
-      remaining,
-      plan: "pro",
-    };
-  }
+  const plan: PlanTier =
+    status === "master"
+      ? "master"
+      : status === "pro"
+        ? "pro"
+        : status === "standard"
+          ? "standard"
+          : "free";
 
-  // Free tier: lifetime limit
-  const remaining = Math.max(0, FREE_GENERATION_LIMIT - count);
+  const limit = getLimitForPlan(plan);
+  const remaining = Math.max(0, limit - count);
+
   return {
     allowed: remaining > 0,
     remaining,
-    plan: "free",
+    plan,
   };
 }
 
