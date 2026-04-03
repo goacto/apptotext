@@ -1,35 +1,29 @@
 -- AppToText Database Schema for Supabase
--- Safe to run on projects with existing tables (e.g. shared GOACTO project)
+-- Fresh install — creates all tables from scratch
 
 -- ============================================================
--- PROFILES: Add AppToText columns to existing profiles table
+-- PROFILES: User profiles (extends Supabase auth.users)
 -- ============================================================
-do $$
-begin
-  -- Add columns if they don't already exist
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'total_xp') then
-    alter table public.profiles add column total_xp integer not null default 0;
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'current_streak') then
-    alter table public.profiles add column current_streak integer not null default 0;
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'longest_streak') then
-    alter table public.profiles add column longest_streak integer not null default 0;
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'last_activity') then
-    alter table public.profiles add column last_activity timestamp with time zone default now();
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'preferred_ai_provider') then
-    alter table public.profiles add column preferred_ai_provider text not null default 'claude';
-  end if;
-end $$;
+create table if not exists public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text not null,
+  display_name text not null default '',
+  avatar_url text,
+  total_xp integer not null default 0,
+  current_streak integer not null default 0,
+  longest_streak integer not null default 0,
+  last_activity timestamp with time zone default now(),
+  preferred_ai_provider text not null default 'claude',
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  subscription_status text not null default 'free',
+  generation_count integer not null default 0,
+  generation_reset_at timestamp with time zone default now(),
+  created_at timestamp with time zone default now()
+);
 
 -- ============================================================
--- NEW TABLES: Create only if they don't exist
+-- TABLES
 -- ============================================================
 
 -- Badges earned by users
@@ -129,51 +123,41 @@ alter table public.quiz_questions enable row level security;
 alter table public.quiz_sessions enable row level security;
 
 -- ============================================================
--- POLICIES: Drop and recreate to avoid "already exists" errors
+-- POLICIES
 -- ============================================================
 
 -- Profiles
-drop policy if exists "Public profiles are viewable by everyone" on public.profiles;
 create policy "Public profiles are viewable by everyone"
   on public.profiles for select using (true);
 
-drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update using (auth.uid() = id);
 
-drop policy if exists "Users can insert own profile" on public.profiles;
 create policy "Users can insert own profile"
   on public.profiles for insert with check (auth.uid() = id);
 
 -- Badges
-drop policy if exists "Badges are viewable by everyone" on public.user_badges;
 create policy "Badges are viewable by everyone"
   on public.user_badges for select using (true);
 
-drop policy if exists "Users can insert own badges" on public.user_badges;
 create policy "Users can insert own badges"
   on public.user_badges for insert with check (auth.uid() = user_id);
 
 -- Conversions
-drop policy if exists "Public conversions viewable by all" on public.conversions;
 create policy "Public conversions viewable by all"
   on public.conversions for select
   using (is_public = true or auth.uid() = user_id);
 
-drop policy if exists "Users can create conversions" on public.conversions;
 create policy "Users can create conversions"
   on public.conversions for insert with check (auth.uid() = user_id);
 
-drop policy if exists "Users can update own conversions" on public.conversions;
 create policy "Users can update own conversions"
   on public.conversions for update using (auth.uid() = user_id);
 
-drop policy if exists "Users can delete own conversions" on public.conversions;
 create policy "Users can delete own conversions"
   on public.conversions for delete using (auth.uid() = user_id);
 
 -- Chapters
-drop policy if exists "Chapters viewable with conversion access" on public.chapters;
 create policy "Chapters viewable with conversion access"
   on public.chapters for select
   using (
@@ -184,7 +168,6 @@ create policy "Chapters viewable with conversion access"
     )
   );
 
-drop policy if exists "Users can insert chapters for own conversions" on public.chapters;
 create policy "Users can insert chapters for own conversions"
   on public.chapters for insert
   with check (
@@ -195,7 +178,6 @@ create policy "Users can insert chapters for own conversions"
   );
 
 -- Flashcards
-drop policy if exists "Flashcards viewable with conversion access" on public.flashcards;
 create policy "Flashcards viewable with conversion access"
   on public.flashcards for select
   using (
@@ -206,7 +188,6 @@ create policy "Flashcards viewable with conversion access"
     )
   );
 
-drop policy if exists "Users can insert flashcards for own conversions" on public.flashcards;
 create policy "Users can insert flashcards for own conversions"
   on public.flashcards for insert
   with check (
@@ -217,20 +198,16 @@ create policy "Users can insert flashcards for own conversions"
   );
 
 -- Flashcard progress
-drop policy if exists "Users can view own flashcard progress" on public.flashcard_progress;
 create policy "Users can view own flashcard progress"
   on public.flashcard_progress for select using (auth.uid() = user_id);
 
-drop policy if exists "Users can manage own flashcard progress" on public.flashcard_progress;
 create policy "Users can manage own flashcard progress"
   on public.flashcard_progress for insert with check (auth.uid() = user_id);
 
-drop policy if exists "Users can update own flashcard progress" on public.flashcard_progress;
 create policy "Users can update own flashcard progress"
   on public.flashcard_progress for update using (auth.uid() = user_id);
 
 -- Quiz questions
-drop policy if exists "Quiz questions viewable with conversion access" on public.quiz_questions;
 create policy "Quiz questions viewable with conversion access"
   on public.quiz_questions for select
   using (
@@ -241,7 +218,6 @@ create policy "Quiz questions viewable with conversion access"
     )
   );
 
-drop policy if exists "Users can insert quiz questions for own conversions" on public.quiz_questions;
 create policy "Users can insert quiz questions for own conversions"
   on public.quiz_questions for insert
   with check (
@@ -252,11 +228,9 @@ create policy "Users can insert quiz questions for own conversions"
   );
 
 -- Quiz sessions
-drop policy if exists "Users can view own quiz sessions" on public.quiz_sessions;
 create policy "Users can view own quiz sessions"
   on public.quiz_sessions for select using (auth.uid() = user_id);
 
-drop policy if exists "Users can insert own quiz sessions" on public.quiz_sessions;
 create policy "Users can insert own quiz sessions"
   on public.quiz_sessions for insert with check (auth.uid() = user_id);
 
@@ -306,25 +280,3 @@ create index if not exists idx_flashcard_progress_user_id on public.flashcard_pr
 create index if not exists idx_flashcard_progress_next_review on public.flashcard_progress(next_review);
 create index if not exists idx_quiz_sessions_user_id on public.quiz_sessions(user_id);
 create index if not exists idx_profiles_total_xp on public.profiles(total_xp desc);
-
--- ============================================================
--- SUBSCRIPTION: Add Stripe subscription columns to profiles
--- ============================================================
-do $$
-begin
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'stripe_customer_id') then
-    alter table public.profiles add column stripe_customer_id text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'stripe_subscription_id') then
-    alter table public.profiles add column stripe_subscription_id text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'subscription_status') then
-    alter table public.profiles add column subscription_status text not null default 'free';
-  end if;
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'generation_count') then
-    alter table public.profiles add column generation_count integer not null default 0;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'generation_reset_at') then
-    alter table public.profiles add column generation_reset_at timestamp with time zone default now();
-  end if;
-end $$;
