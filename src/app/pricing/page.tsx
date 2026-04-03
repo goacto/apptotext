@@ -227,7 +227,11 @@ export default function PricingPage() {
     return currentPlan === "standard" || currentPlan === "pro" || currentPlan === "master";
   }
 
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
   async function handleCheckout(plan: PlanTier) {
+    setCheckoutError(null);
+
     if (plan === "free") {
       router.push("/auth/signup");
       return;
@@ -250,10 +254,10 @@ export default function PricingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        console.error("Checkout error:", data.error);
+        setCheckoutError(data.error || "Failed to create checkout session");
       }
     } catch (error) {
-      console.error("Checkout error:", error);
+      setCheckoutError(error instanceof Error ? error.message : "Network error");
     } finally {
       setCheckoutLoading(null);
     }
@@ -395,6 +399,12 @@ export default function PricingPage() {
         1 generation. Converting a URL costs nothing &mdash; only generating
         content counts.
       </div>
+
+      {checkoutError && (
+        <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-destructive/30 bg-destructive/10 px-6 py-4 text-center text-sm text-destructive">
+          {checkoutError}
+        </div>
+      )}
 
       {/* Pricing Cards */}
       <div className="mt-10 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
