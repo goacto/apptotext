@@ -12,6 +12,7 @@ import {
   LogOut,
   Leaf,
   Globe,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +39,7 @@ import { APP_NAME, GOACTO_SHORT } from "@/lib/constants";
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/pricing", label: "Pricing", icon: CreditCard },
   { href: "/ecosystem", label: "Ecosystem", icon: Globe },
 ];
 

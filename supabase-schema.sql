@@ -306,3 +306,25 @@ create index if not exists idx_flashcard_progress_user_id on public.flashcard_pr
 create index if not exists idx_flashcard_progress_next_review on public.flashcard_progress(next_review);
 create index if not exists idx_quiz_sessions_user_id on public.quiz_sessions(user_id);
 create index if not exists idx_profiles_total_xp on public.profiles(total_xp desc);
+
+-- ============================================================
+-- SUBSCRIPTION: Add Stripe subscription columns to profiles
+-- ============================================================
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'stripe_customer_id') then
+    alter table public.profiles add column stripe_customer_id text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'stripe_subscription_id') then
+    alter table public.profiles add column stripe_subscription_id text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'subscription_status') then
+    alter table public.profiles add column subscription_status text not null default 'free';
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'generation_count') then
+    alter table public.profiles add column generation_count integer not null default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'generation_reset_at') then
+    alter table public.profiles add column generation_reset_at timestamp with time zone default now();
+  end if;
+end $$;

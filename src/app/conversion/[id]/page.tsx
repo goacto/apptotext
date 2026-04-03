@@ -327,7 +327,6 @@ function ConversionViewerContent() {
                           <Card key={chapter.id}>
                             <CardHeader>
                               <CardTitle className="text-lg">
-                                Chapter {chapter.chapter_number}:{" "}
                                 {chapter.title}
                               </CardTitle>
                             </CardHeader>

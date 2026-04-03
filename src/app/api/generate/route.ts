@@ -10,6 +10,7 @@ import {
   getQuizSystemPrompt,
   getQuizUserPrompt,
 } from "@/lib/ai/prompts";
+import { canGenerate, incrementGenerationCount } from "@/lib/subscription";
 
 interface GenerateRequestBody {
   conversion_id: string;
@@ -105,6 +106,15 @@ export async function POST(request: NextRequest) {
         { error: "Valid level is required (101, 201, 301, 401, or 501)" },
         { status: 400 }
       );
+    }
+
+    // Check generation limits
+    const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
+    if (!allowed) {
+      const message = plan === "free"
+        ? "Free tier limit reached (2 generations). Upgrade to Pro for 50 generations/month."
+        : "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.";
+      return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
     }
 
     // Fetch the conversion
@@ -279,6 +289,8 @@ export async function POST(request: NextRequest) {
         quizQuestions = insertedQuestions || [];
       }
     }
+
+    await incrementGenerationCount(supabase, user.id);
 
     return NextResponse.json({
       chapter,

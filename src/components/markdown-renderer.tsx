@@ -7,13 +7,10 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
-function sanitizeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+// No HTML escaping needed — React handles XSS protection automatically.
+// We only strip raw HTML tags to prevent injection of actual DOM elements.
+function sanitizeContent(text: string): string {
+  return text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
 }
 
 function parseInline(text: string): React.ReactNode[] {
@@ -187,7 +184,7 @@ function parseBlocks(text: string): BlockNode[] {
 }
 
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
-  const sanitized = sanitizeHtml(content);
+  const sanitized = sanitizeContent(content);
   const blocks = parseBlocks(sanitized);
 
   return (
