@@ -17,6 +17,8 @@ interface GenerateRequestBody {
   ai_provider: AIProvider;
 }
 
+export const maxDuration = 60;
+
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
 
 function extractKeyConcepts(markdown: string): string[] {
@@ -174,13 +176,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate flashcards
-    const flashcardResponse = await callAI(provider, [
-      { role: "system", content: getFlashcardSystemPrompt() },
-      {
-        role: "user",
-        content: getFlashcardUserPrompt(chapterContent, body.level),
-      },
+    // Generate flashcards and quiz in parallel to save time
+    const [flashcardResponse, quizResponse] = await Promise.all([
+      callAI(provider, [
+        { role: "system", content: getFlashcardSystemPrompt() },
+        {
+          role: "user",
+          content: getFlashcardUserPrompt(chapterContent, body.level),
+        },
+      ]),
+      callAI(provider, [
+        { role: "system", content: getQuizSystemPrompt() },
+        {
+          role: "user",
+          content: getQuizUserPrompt(chapterContent, body.level, 10),
+        },
+      ]),
     ]);
 
     let flashcardsData: { front: string; back: string; difficulty: number }[] = [];
@@ -221,15 +232,6 @@ export async function POST(request: NextRequest) {
         flashcards = insertedFlashcards || [];
       }
     }
-
-    // Generate quiz questions
-    const quizResponse = await callAI(provider, [
-      { role: "system", content: getQuizSystemPrompt() },
-      {
-        role: "user",
-        content: getQuizUserPrompt(chapterContent, body.level, 10),
-      },
-    ]);
 
     let quizData: {
       question: string;

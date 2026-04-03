@@ -41,6 +41,7 @@ async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
+      stream: false,
       max_tokens: 8192,
       system: systemMessage?.content || "",
       messages: userMessages,
