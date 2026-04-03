@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 
 export async function POST() {
   try {
@@ -28,7 +28,7 @@ export async function POST() {
     let customerId = profile?.stripe_customer_id;
 
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customer = await getStripe().customers.create({
         email: user.email ?? profile?.email ?? undefined,
         metadata: { user_id: user.id },
       });
@@ -41,7 +41,7 @@ export async function POST() {
     }
 
     // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       line_items: [
