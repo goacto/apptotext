@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://apptotext.com";
+
 export async function POST() {
   try {
     const supabase = await createClient();
@@ -33,7 +35,7 @@ export async function POST() {
 
     const session = await getStripe().billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
+      return_url: `${APP_URL}/pricing`,
     });
 
     return NextResponse.json({ url: session.url });

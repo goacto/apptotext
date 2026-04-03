@@ -4,6 +4,8 @@ import { getStripe } from "@/lib/stripe";
 
 export const maxDuration = 30;
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://apptotext.com";
+
 type PlanTier = "standard" | "pro" | "master";
 
 const PLAN_CONFIG: Record<PlanTier, { price: number; name: string; description: string }> = {
@@ -94,8 +96,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       metadata: { user_id: user.id, plan },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?upgraded=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
+      success_url: `${APP_URL}/dashboard?upgraded=true`,
+      cancel_url: `${APP_URL}/pricing`,
     });
 
     return NextResponse.json({ url: session.url });
