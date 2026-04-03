@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Loader2, BookOpen } from "lucide-react";
+import Image from "next/image";
+import { Mail, Loader2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { APP_NAME, GOACTO_SHORT, GOACTO_FULL } from "@/lib/constants";
@@ -102,7 +103,7 @@ export default function LoginPage() {
         {/* Branding */}
         <div className="flex flex-col items-center space-y-2 text-center">
           <div className="flex items-center gap-2">
-            <BookOpen className="size-8 text-primary" />
+            <Image src="/logo.svg" alt="AppToText" width={40} height={40} className="rounded-lg" />
             <span className="text-2xl font-bold tracking-tight text-foreground">
               {APP_NAME}
             </span>

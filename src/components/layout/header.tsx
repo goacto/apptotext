@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   LayoutDashboard,
   Trophy,
@@ -10,7 +11,6 @@ import {
   User,
   Settings,
   LogOut,
-  Leaf,
   Globe,
   CreditCard,
 } from "lucide-react";
@@ -59,9 +59,13 @@ export function Header() {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Branding */}
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Leaf className="size-4" />
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="AppToText"
+            width={32}
+            height={32}
+            className="rounded-lg"
+          />
           <div className="flex flex-col leading-none">
             <span className="text-sm font-bold tracking-tight text-foreground">
               {APP_NAME}
@@ -147,9 +151,13 @@ export function Header() {
             <SheetContent side="right" className="w-72">
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2">
-                  <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                    <Leaf className="size-3.5" />
-                  </div>
+                  <Image
+                    src="/logo.svg"
+                    alt="AppToText"
+                    width={28}
+                    height={28}
+                    className="rounded-md"
+                  />
                   <div className="flex flex-col leading-none">
                     <span className="text-sm font-semibold">{APP_NAME}</span>
                     <span className="text-[10px] text-muted-foreground">by {GOACTO_SHORT}</span>
