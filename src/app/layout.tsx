@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "AppToText | GOACTO",
   description:
     "Transform any codebase or application into a complete learning textbook. Part of the GOACTO ecosystem — Growing Ourselves And Contributing To Others.",
+  icons: {
+    icon: "/favicon-32.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

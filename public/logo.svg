@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d9488"/>
+      <stop offset="100%" style="stop-color:#115e59"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="20" fill="url(#bg)"/>
+  <path d="M32 28 L60 24 L88 28 L88 84 L60 80 L32 84 Z" fill="white" opacity="0.95"/>
+  <line x1="60" y1="24" x2="60" y2="80" stroke="#0d9488" stroke-width="1.5" opacity="0.25"/>
+  <rect x="40" y="36" width="14" height="3" rx="1.5" fill="#0d9488" opacity="0.5"/>
+  <rect x="40" y="43" width="11" height="3" rx="1.5" fill="#0d9488" opacity="0.35"/>
+  <rect x="40" y="50" width="14" height="3" rx="1.5" fill="#0d9488" opacity="0.5"/>
+  <rect x="40" y="57" width="9" height="3" rx="1.5" fill="#0d9488" opacity="0.35"/>
+  <rect x="40" y="64" width="12" height="3" rx="1.5" fill="#0d9488" opacity="0.45"/>
+  <rect x="66" y="36" width="14" height="3" rx="1.5" fill="#0d9488" opacity="0.5"/>
+  <rect x="66" y="43" width="11" height="3" rx="1.5" fill="#0d9488" opacity="0.35"/>
+  <rect x="66" y="50" width="14" height="3" rx="1.5" fill="#0d9488" opacity="0.5"/>
+  <rect x="66" y="57" width="9" height="3" rx="1.5" fill="#0d9488" opacity="0.35"/>
+  <rect x="66" y="64" width="12" height="3" rx="1.5" fill="#0d9488" opacity="0.45"/>
+  <path d="M52 72 Q60 58 74 55 Q69 67 56 78 Z" fill="#4ade80" opacity="0.85"/>
+  <text x="60" y="106" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="14" fill="white" letter-spacing="0.5">AppToText</text>
+</svg>
