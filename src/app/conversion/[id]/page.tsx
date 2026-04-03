@@ -9,7 +9,9 @@ import {
   BrainCircuit,
   Calendar,
   Check,
+  Download,
   ExternalLink,
+  FileText,
   Layers,
   Loader2,
   Sparkles,
@@ -20,6 +22,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AuthGuard, useAuth } from "@/components/auth/auth-guard";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TEXTBOOK_LEVELS, AI_PROVIDERS } from "@/lib/constants";
+import { exportToMarkdown, downloadMarkdown, exportToPDF } from "@/lib/export";
 import type {
   Conversion,
   TextbookChapter,
@@ -53,6 +56,8 @@ function ConversionViewerContent() {
   const [activeLevel, setActiveLevel] = useState<TextbookLevel>(101);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   const fetchConversion = useCallback(async () => {
     try {
@@ -125,6 +130,33 @@ function ConversionViewerContent() {
       day: "numeric",
     });
   }, [conversion]);
+
+  function handleExportMarkdown() {
+    if (!conversion || chapters.length === 0) return;
+    setIsExportingMarkdown(true);
+    try {
+      const content = exportToMarkdown(conversion, chapters);
+      const slug = conversion.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      downloadMarkdown(`apptotext-${slug}.md`, content);
+    } finally {
+      setIsExportingMarkdown(false);
+    }
+  }
+
+  function handleExportPDF() {
+    if (!conversion || chapters.length === 0) return;
+    setIsExportingPDF(true);
+    try {
+      exportToPDF(conversion, chapters);
+    } finally {
+      // Give a small delay so the button shows the loading state
+      // before the print dialog takes focus
+      setTimeout(() => setIsExportingPDF(false), 500);
+    }
+  }
 
   async function handleGenerate() {
     if (!conversion) return;
@@ -427,6 +459,46 @@ function ConversionViewerContent() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Export card */}
+              {levelsWithContent.size > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Export Textbook</CardTitle>
+                    <CardDescription>
+                      Download your generated content
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      disabled={isExportingMarkdown}
+                      onClick={handleExportMarkdown}
+                    >
+                      {isExportingMarkdown ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Download className="size-4" />
+                      )}
+                      Export as Markdown
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      disabled={isExportingPDF}
+                      onClick={handleExportPDF}
+                    >
+                      {isExportingPDF ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <FileText className="size-4" />
+                      )}
+                      Export as PDF
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Actions card */}
               {hasContentForActiveLevel && (
