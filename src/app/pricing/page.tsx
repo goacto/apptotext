@@ -135,8 +135,17 @@ export default function PricingPage() {
         </p>
       </div>
 
+      {/* What counts as a generation */}
+      <div className="mx-auto mt-10 max-w-2xl rounded-xl border bg-muted/30 px-6 py-4 text-center text-sm text-muted-foreground">
+        <strong className="text-foreground">What counts as 1 generation?</strong>{" "}
+        Each time you click &ldquo;Generate&rdquo; on a level (e.g. 101, 201), it
+        creates a textbook chapter + flashcards + quiz for that level. That&rsquo;s
+        1 generation. Converting a URL costs nothing &mdash; only generating
+        content counts.
+      </div>
+
       {/* Pricing Cards */}
-      <div className="mt-12 grid gap-6 sm:grid-cols-2">
+      <div className="mt-10 grid gap-6 sm:grid-cols-2">
         {/* Free Tier */}
         <Card className="relative">
           <CardHeader>
@@ -159,7 +168,7 @@ export default function PricingPage() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                <span>2 generations total (lifetime trial)</span>
+                <span>2 level generations total (e.g. generate 101 + 201 for one repo)</span>
               </li>
               <li className="flex items-start gap-2">
                 <Check className="mt-0.5 size-4 shrink-0 text-primary" />
@@ -212,9 +221,9 @@ export default function PricingPage() {
         </Card>
 
         {/* Pro Tier */}
-        <Card className="relative border-primary/50 ring-2 ring-primary/20">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-            <Badge className="gap-1">
+        <Card className="relative overflow-visible border-primary/50 ring-2 ring-primary/20">
+          <div className="absolute -top-3 left-1/2 z-10 -translate-x-1/2">
+            <Badge className="gap-1 shadow-sm">
               <Crown className="size-3" />
               Most Popular
             </Badge>
