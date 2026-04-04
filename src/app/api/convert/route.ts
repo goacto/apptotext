@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AIProvider } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 interface ConvertRequestBody {
   url: string;

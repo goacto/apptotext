@@ -12,13 +12,16 @@ import {
 } from "@/lib/ai/prompts";
 import { canGenerate, incrementGenerationCount } from "@/lib/subscription";
 
+type GeneratePhase = "chapter" | "flashcards" | "quiz";
+
 interface GenerateRequestBody {
   conversion_id: string;
   level: TextbookLevel;
   ai_provider: AIProvider;
+  phase: GeneratePhase;
 }
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
 
@@ -108,17 +111,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check generation limits
-    const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
-    if (!allowed) {
-      const limitMessages: Record<string, string> = {
-        free: "Free tier limit reached (3 generations). Upgrade to a paid plan for more generations per month.",
-        standard: "Monthly generation limit reached (10). Upgrade to Pro for 25/month or Master for 50/month, or wait for your next billing cycle.",
-        pro: "Monthly generation limit reached (25). Upgrade to Master for 50/month, or wait for your next billing cycle.",
-        master: "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.",
-      };
-      const message = limitMessages[plan] ?? limitMessages.free;
-      return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+    const phase = body.phase || "chapter";
+    if (!["chapter", "flashcards", "quiz"].includes(phase)) {
+      return NextResponse.json(
+        { error: "Valid phase is required (chapter, flashcards, or quiz)" },
+        { status: 400 }
+      );
     }
 
     // Fetch the conversion
@@ -136,171 +134,234 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if content already exists for this level
-    const { data: existingChapter } = await supabase
-      .from("chapters")
-      .select("id")
-      .eq("conversion_id", body.conversion_id)
-      .eq("level", body.level)
-      .limit(1)
-      .single();
-
-    if (existingChapter) {
-      return NextResponse.json(
-        { error: "Content already generated for this level. Delete existing content first." },
-        { status: 409 }
-      );
-    }
-
     const provider = (body.ai_provider || conversion.ai_provider || "claude") as AIProvider;
-    const sourceContent = conversion.source_content as string;
-    const title = conversion.title as string;
 
-    // Generate textbook chapter
-    const chapterResponse = await callAI(provider, [
-      { role: "system", content: getTextbookSystemPrompt(body.level) },
-      {
-        role: "user",
-        content: getTextbookUserPrompt(title, sourceContent, body.level, 1),
-      },
-    ]);
+    // ── CHAPTER PHASE ──────────────────────────────────────────────
+    if (phase === "chapter") {
+      // Check generation limits only on chapter (the "main" generation)
+      const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
+      if (!allowed) {
+        const limitMessages: Record<string, string> = {
+          free: "Free tier limit reached (3 generations). Upgrade to a paid plan for more generations per month.",
+          standard: "Monthly generation limit reached (10). Upgrade to Pro for 25/month or Master for 50/month, or wait for your next billing cycle.",
+          pro: "Monthly generation limit reached (25). Upgrade to Master for 50/month, or wait for your next billing cycle.",
+          master: "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.",
+        };
+        const message = limitMessages[plan] ?? limitMessages.free;
+        return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+      }
 
-    const chapterContent = chapterResponse.content;
-    const keyConcepts = extractKeyConcepts(chapterContent);
-    const chapterTitle = extractChapterTitle(chapterContent);
+      // Check if chapter already exists for this level
+      const { data: existingChapter } = await supabase
+        .from("chapters")
+        .select("id")
+        .eq("conversion_id", body.conversion_id)
+        .eq("level", body.level)
+        .limit(1)
+        .single();
 
-    // Store chapter in Supabase
-    const { data: chapter, error: chapterError } = await supabase
-      .from("chapters")
-      .insert({
-        conversion_id: body.conversion_id,
-        level: body.level,
-        chapter_number: 1,
-        title: chapterTitle,
-        content: chapterContent,
-        key_concepts: keyConcepts,
-      })
-      .select()
-      .single();
+      if (existingChapter) {
+        return NextResponse.json(
+          { error: "Content already generated for this level. Delete existing content first." },
+          { status: 409 }
+        );
+      }
 
-    if (chapterError) {
-      return NextResponse.json(
-        { error: "Failed to store chapter", details: chapterError.message },
-        { status: 500 }
-      );
+      const sourceContent = conversion.source_content as string;
+      const title = conversion.title as string;
+
+      const chapterResponse = await callAI(provider, [
+        { role: "system", content: getTextbookSystemPrompt(body.level) },
+        {
+          role: "user",
+          content: getTextbookUserPrompt(title, sourceContent, body.level, 1),
+        },
+      ]);
+
+      const chapterContent = chapterResponse.content;
+      const keyConcepts = extractKeyConcepts(chapterContent);
+      const chapterTitle = extractChapterTitle(chapterContent);
+
+      const { data: chapter, error: chapterError } = await supabase
+        .from("chapters")
+        .insert({
+          conversion_id: body.conversion_id,
+          level: body.level,
+          chapter_number: 1,
+          title: chapterTitle,
+          content: chapterContent,
+          key_concepts: keyConcepts,
+        })
+        .select()
+        .single();
+
+      if (chapterError) {
+        return NextResponse.json(
+          { error: "Failed to store chapter", details: chapterError.message },
+          { status: 500 }
+        );
+      }
+
+      await incrementGenerationCount(supabase, user.id);
+
+      return NextResponse.json({ chapter });
     }
 
-    // Generate flashcards and quiz in parallel to save time
-    const [flashcardResponse, quizResponse] = await Promise.all([
-      callAI(provider, [
+    // ── FLASHCARDS PHASE ───────────────────────────────────────────
+    if (phase === "flashcards") {
+      // Read the chapter from DB (must exist)
+      const { data: chapter, error: chapterFetchError } = await supabase
+        .from("chapters")
+        .select("content")
+        .eq("conversion_id", body.conversion_id)
+        .eq("level", body.level)
+        .limit(1)
+        .single();
+
+      if (chapterFetchError || !chapter) {
+        return NextResponse.json(
+          { error: "Chapter must be generated before flashcards" },
+          { status: 400 }
+        );
+      }
+
+      const flashcardResponse = await callAI(provider, [
         { role: "system", content: getFlashcardSystemPrompt() },
         {
           role: "user",
-          content: getFlashcardUserPrompt(chapterContent, body.level),
+          content: getFlashcardUserPrompt(chapter.content, body.level),
         },
-      ]),
-      callAI(provider, [
+      ]);
+
+      let flashcardsData: { front: string; back: string; difficulty: number }[] = [];
+      try {
+        const parsed = parseJsonFromAIResponse(flashcardResponse.content);
+        if (Array.isArray(parsed)) {
+          flashcardsData = parsed.map((card: Record<string, unknown>) => ({
+            front: String(card.front || ""),
+            back: String(card.back || ""),
+            difficulty: typeof card.difficulty === "number"
+              ? Math.min(5, Math.max(1, card.difficulty))
+              : 3,
+          }));
+        }
+      } catch (parseError) {
+        console.error("Failed to parse flashcards:", parseError);
+        return NextResponse.json(
+          { error: "Failed to parse flashcard data from AI" },
+          { status: 500 }
+        );
+      }
+
+      let flashcards: Record<string, unknown>[] = [];
+      if (flashcardsData.length > 0) {
+        const flashcardRows = flashcardsData.map((card) => ({
+          conversion_id: body.conversion_id,
+          level: body.level,
+          front: card.front,
+          back: card.back,
+          difficulty: card.difficulty,
+        }));
+
+        const { data: insertedFlashcards, error: flashcardError } = await supabase
+          .from("flashcards")
+          .insert(flashcardRows)
+          .select();
+
+        if (flashcardError) {
+          return NextResponse.json(
+            { error: "Failed to store flashcards", details: flashcardError.message },
+            { status: 500 }
+          );
+        }
+        flashcards = insertedFlashcards || [];
+      }
+
+      return NextResponse.json({ flashcards });
+    }
+
+    // ── QUIZ PHASE ─────────────────────────────────────────────────
+    if (phase === "quiz") {
+      // Read the chapter from DB (must exist)
+      const { data: chapter, error: chapterFetchError } = await supabase
+        .from("chapters")
+        .select("content")
+        .eq("conversion_id", body.conversion_id)
+        .eq("level", body.level)
+        .limit(1)
+        .single();
+
+      if (chapterFetchError || !chapter) {
+        return NextResponse.json(
+          { error: "Chapter must be generated before quiz" },
+          { status: 400 }
+        );
+      }
+
+      const quizResponse = await callAI(provider, [
         { role: "system", content: getQuizSystemPrompt() },
         {
           role: "user",
-          content: getQuizUserPrompt(chapterContent, body.level, 10),
+          content: getQuizUserPrompt(chapter.content, body.level, 10),
         },
-      ]),
-    ]);
+      ]);
 
-    let flashcardsData: { front: string; back: string; difficulty: number }[] = [];
-    try {
-      const parsed = parseJsonFromAIResponse(flashcardResponse.content);
-      if (Array.isArray(parsed)) {
-        flashcardsData = parsed.map((card: Record<string, unknown>) => ({
-          front: String(card.front || ""),
-          back: String(card.back || ""),
-          difficulty: typeof card.difficulty === "number"
-            ? Math.min(5, Math.max(1, card.difficulty))
-            : 3,
+      let quizData: {
+        question: string;
+        options: string[];
+        correct_answer: number;
+        explanation: string;
+      }[] = [];
+
+      try {
+        const parsed = parseJsonFromAIResponse(quizResponse.content);
+        if (Array.isArray(parsed)) {
+          quizData = parsed.map((q: Record<string, unknown>) => ({
+            question: String(q.question || ""),
+            options: Array.isArray(q.options) ? q.options.map(String) : [],
+            correct_answer: typeof q.correct_answer === "number"
+              ? Math.min(3, Math.max(0, q.correct_answer))
+              : 0,
+            explanation: String(q.explanation || ""),
+          }));
+        }
+      } catch (parseError) {
+        console.error("Failed to parse quiz:", parseError);
+        return NextResponse.json(
+          { error: "Failed to parse quiz data from AI" },
+          { status: 500 }
+        );
+      }
+
+      let quizQuestions: Record<string, unknown>[] = [];
+      if (quizData.length > 0) {
+        const quizRows = quizData.map((q) => ({
+          conversion_id: body.conversion_id,
+          level: body.level,
+          question: q.question,
+          options: q.options,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
         }));
-      }
-    } catch (parseError) {
-      console.error("Failed to parse flashcards:", parseError);
-      flashcardsData = [];
-    }
 
-    let flashcards: Record<string, unknown>[] = [];
-    if (flashcardsData.length > 0) {
-      const flashcardRows = flashcardsData.map((card) => ({
-        conversion_id: body.conversion_id,
-        level: body.level,
-        front: card.front,
-        back: card.back,
-        difficulty: card.difficulty,
-      }));
+        const { data: insertedQuestions, error: quizError } = await supabase
+          .from("quiz_questions")
+          .insert(quizRows)
+          .select();
 
-      const { data: insertedFlashcards, error: flashcardError } = await supabase
-        .from("flashcards")
-        .insert(flashcardRows)
-        .select();
-
-      if (flashcardError) {
-        console.error("Failed to store flashcards:", flashcardError.message);
-      } else {
-        flashcards = insertedFlashcards || [];
-      }
-    }
-
-    let quizData: {
-      question: string;
-      options: string[];
-      correct_answer: number;
-      explanation: string;
-    }[] = [];
-
-    try {
-      const parsed = parseJsonFromAIResponse(quizResponse.content);
-      if (Array.isArray(parsed)) {
-        quizData = parsed.map((q: Record<string, unknown>) => ({
-          question: String(q.question || ""),
-          options: Array.isArray(q.options) ? q.options.map(String) : [],
-          correct_answer: typeof q.correct_answer === "number"
-            ? Math.min(3, Math.max(0, q.correct_answer))
-            : 0,
-          explanation: String(q.explanation || ""),
-        }));
-      }
-    } catch (parseError) {
-      console.error("Failed to parse quiz:", parseError);
-      quizData = [];
-    }
-
-    let quizQuestions: Record<string, unknown>[] = [];
-    if (quizData.length > 0) {
-      const quizRows = quizData.map((q) => ({
-        conversion_id: body.conversion_id,
-        level: body.level,
-        question: q.question,
-        options: q.options,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-      }));
-
-      const { data: insertedQuestions, error: quizError } = await supabase
-        .from("quiz_questions")
-        .insert(quizRows)
-        .select();
-
-      if (quizError) {
-        console.error("Failed to store quiz questions:", quizError.message);
-      } else {
+        if (quizError) {
+          return NextResponse.json(
+            { error: "Failed to store quiz questions", details: quizError.message },
+            { status: 500 }
+          );
+        }
         quizQuestions = insertedQuestions || [];
       }
+
+      return NextResponse.json({ quiz_questions: quizQuestions });
     }
 
-    await incrementGenerationCount(supabase, user.id);
-
-    return NextResponse.json({
-      chapter,
-      flashcards,
-      quiz_questions: quizQuestions,
-    });
+    return NextResponse.json({ error: "Invalid phase" }, { status: 400 });
   } catch (error) {
     console.error("Generation error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";

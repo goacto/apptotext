@@ -55,6 +55,7 @@ function ConversionViewerContent() {
   const [error, setError] = useState<string | null>(null);
   const [activeLevel, setActiveLevel] = useState<TextbookLevel>(101);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatePhase, setGeneratePhase] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -158,6 +159,27 @@ function ConversionViewerContent() {
     }
   }
 
+  async function callGeneratePhase(phase: string) {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversion_id: conversion!.id,
+        level: activeLevel,
+        phase,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(
+        errorData?.error || `Generation failed (${response.status})`
+      );
+    }
+
+    return response.json();
+  }
+
   async function handleGenerate() {
     if (!conversion) return;
 
@@ -165,23 +187,16 @@ function ConversionViewerContent() {
     setGenerateError(null);
 
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversion_id: conversion.id,
-          level: activeLevel,
-          source_content: conversion.source_content,
-          title: conversion.title,
-        }),
-      });
+      // Phase 1: Generate chapter (1 AI call)
+      setGeneratePhase("Generating chapter...");
+      await callGeneratePhase("chapter");
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(
-          errorData?.error || `Generation failed (${response.status})`
-        );
-      }
+      // Phase 2: Generate flashcards + quiz in parallel (1 AI call each)
+      setGeneratePhase("Generating flashcards & quiz...");
+      await Promise.all([
+        callGeneratePhase("flashcards"),
+        callGeneratePhase("quiz"),
+      ]);
 
       // Refresh chapters after generation
       await fetchChapters();
@@ -191,6 +206,7 @@ function ConversionViewerContent() {
       );
     } finally {
       setIsGenerating(false);
+      setGeneratePhase(null);
     }
   }
 
@@ -382,15 +398,13 @@ function ConversionViewerContent() {
                           )}
                         <Button
                           onClick={handleGenerate}
-                          disabled={
-                            isGenerating && activeLevel === level.level
-                          }
+                          disabled={isGenerating}
                           size="lg"
                         >
                           {isGenerating && activeLevel === level.level ? (
                             <>
                               <Loader2 className="size-4 animate-spin" />
-                              Generating...
+                              {generatePhase || "Generating..."}
                             </>
                           ) : (
                             <>
