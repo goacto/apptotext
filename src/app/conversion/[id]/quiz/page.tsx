@@ -352,6 +352,20 @@ function QuizContent() {
     setShowConfetti(false);
   }
 
+  function handleRetryWrongOnly() {
+    const wrongQuestions = questions.filter(
+      (q, i) => answers[i] !== q.correct_answer
+    );
+    if (wrongQuestions.length === 0) return;
+    setQuestions(wrongQuestions);
+    setPhase("question");
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setAnswers([]);
+    setResult(null);
+    setShowConfetti(false);
+  }
+
   // ---- Loading / Error ----
 
   if (isLoading) {
@@ -747,6 +761,16 @@ function QuizContent() {
 
             {/* Actions */}
             <div className="flex flex-col gap-2 sm:flex-row">
+              {result.score < result.total_questions && (
+                <Button
+                  size="lg"
+                  onClick={handleRetryWrongOnly}
+                  className="flex-1"
+                >
+                  <RotateCcw className="size-4" />
+                  Retry Wrong Only ({result.total_questions - result.score})
+                </Button>
+              )}
               <Button
                 size="lg"
                 variant="outline"
@@ -754,10 +778,11 @@ function QuizContent() {
                 className="flex-1"
               >
                 <RotateCcw className="size-4" />
-                Retake Quiz
+                Retake Full Quiz
               </Button>
               <Button
                 size="lg"
+                variant="outline"
                 onClick={() => router.push(`/conversion/${conversionId}`)}
                 className="flex-1"
               >

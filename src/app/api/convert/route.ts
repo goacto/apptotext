@@ -206,6 +206,11 @@ async function fetchWebsiteContent(url: string): Promise<{
     throw new Error(`Failed to fetch URL: ${response.statusText}`);
   }
 
+  const contentLength = parseInt(response.headers.get("content-length") || "0");
+  if (contentLength > 10_000_000) {
+    throw new Error("Page is too large to process (>10MB)");
+  }
+
   const html = await response.text();
 
   // Extract title

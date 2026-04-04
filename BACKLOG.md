@@ -18,8 +18,8 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 
 - [ ] **Streaming AI Responses** — Stream textbook generation in real-time instead of waiting for full response
 - [ ] **Multi-Chapter Generation** — Generate 3-5 chapters per level for deeper learning
-- [ ] **GitHub OAuth Sign-In** — Enable GitHub OAuth provider in Supabase
-- [ ] **Search & Filter** — Find conversions by title, provider, or date
+- [ ] **GitHub OAuth Sign-In** — Enable GitHub OAuth provider in Supabase (frontend code ready, needs Supabase dashboard config)
+- [x] **Search & Filter** — Find conversions by title, provider, or date
 
 ## Medium Priority
 
@@ -29,7 +29,7 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 - [ ] **Share via Link** — Generate shareable public links for community conversions
 - [ ] **Email Notifications** — Streak reminders, weekly progress summaries
 - [ ] **Flashcard Deck Management** — Custom decks, merge flashcards from multiple conversions
-- [ ] **Quiz Retry with Wrong Answers Only** — Re-quiz only missed questions
+- [x] **Quiz Retry with Wrong Answers Only** — Re-quiz only missed questions
 
 ## Future Vision
 

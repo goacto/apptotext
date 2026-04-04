@@ -9,6 +9,7 @@ import {
   Layers,
   Loader2,
   Rocket,
+  Search,
   Share2,
   Trophy,
 } from "lucide-react";
@@ -78,6 +79,10 @@ function DashboardContent() {
   const [convertUrl, setConvertUrl] = useState("");
   const [aiProvider, setAiProvider] = useState<AIProvider>("claude");
   const [isConverting, setIsConverting] = useState(false);
+
+  // Search & filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterProvider, setFilterProvider] = useState<string>("all");
 
   // Share toggling state
   const [sharingIds, setSharingIds] = useState<Set<string>>(new Set());
@@ -190,13 +195,15 @@ function DashboardContent() {
       });
 
       if (!response.ok) {
-        throw new Error("Conversion failed");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || "Conversion failed");
       }
 
       const data = await response.json();
       router.push(`/conversion/${data.id}`);
     } catch (error) {
       console.error("Quick convert failed:", error);
+      alert(error instanceof Error ? error.message : "Conversion failed. Please try again.");
       setIsConverting(false);
     }
   }
@@ -234,6 +241,22 @@ function DashboardContent() {
       });
     }
   }
+
+  const filteredConversions = useMemo(() => {
+    let result = conversions;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          c.source_url.toLowerCase().includes(q)
+      );
+    }
+    if (filterProvider !== "all") {
+      result = result.filter((c) => c.ai_provider === filterProvider);
+    }
+    return result;
+  }, [conversions, searchQuery, filterProvider]);
 
   const displayName = useMemo(() => {
     if (profile?.display_name) return profile.display_name;
@@ -397,16 +420,35 @@ function DashboardContent() {
 
       {/* Recent Conversions */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Recent Conversions</h2>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Recent Conversions</h2>
+          </div>
           {conversions.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/conversions")}
-            >
-              View all
-            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by title or URL..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={filterProvider} onValueChange={(val) => setFilterProvider(val ?? "all")}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  {AI_PROVIDERS.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 
@@ -430,9 +472,18 @@ function DashboardContent() {
               </Button>
             </CardContent>
           </Card>
+        ) : filteredConversions.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <Search className="mb-3 size-6 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                No conversions match your search.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {conversions.map((conversion) => {
+            {filteredConversions.map((conversion) => {
               const levelProgress = getLevelProgress(conversion.completedLevels);
               return (
                 <Card key={conversion.id}>

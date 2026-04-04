@@ -134,7 +134,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const provider = (body.ai_provider || conversion.ai_provider || "claude") as AIProvider;
+    const providerRaw = body.ai_provider || conversion.ai_provider || "claude";
+    if (!["claude", "openai", "grok"].includes(providerRaw)) {
+      return NextResponse.json(
+        { error: "Invalid AI provider" },
+        { status: 400 }
+      );
+    }
+    const provider = providerRaw as AIProvider;
 
     // ── CHAPTER PHASE ──────────────────────────────────────────────
     if (phase === "chapter") {

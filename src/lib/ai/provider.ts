@@ -27,6 +27,10 @@ export async function callAI(
 }
 
 async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("Claude is not configured. ANTHROPIC_API_KEY is missing.");
+  }
+
   const systemMessage = messages.find((m) => m.role === "system");
   const userMessages = messages
     .filter((m) => m.role !== "system")
@@ -36,7 +40,7 @@ async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
@@ -61,11 +65,15 @@ async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
 }
 
 async function callOpenAI(messages: AIMessage[]): Promise<AIResponse> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OpenAI is not configured. OPENAI_API_KEY is missing.");
+  }
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
       model: "gpt-4o",
@@ -87,11 +95,15 @@ async function callOpenAI(messages: AIMessage[]): Promise<AIResponse> {
 }
 
 async function callGrok(messages: AIMessage[]): Promise<AIResponse> {
+  if (!process.env.XAI_API_KEY) {
+    throw new Error("Grok is not configured. XAI_API_KEY is missing.");
+  }
+
   const response = await fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY!}`,
+      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
     },
     body: JSON.stringify({
       model: "grok-3",
