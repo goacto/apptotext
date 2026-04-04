@@ -18,7 +18,7 @@ interface GenerateRequestBody {
   ai_provider: AIProvider;
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
 

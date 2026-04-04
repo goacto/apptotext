@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AIProvider } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 interface ConvertRequestBody {
   url: string;
@@ -153,30 +153,33 @@ async function fetchGitHubContent(url: string): Promise<{
     "lib/main.ts",
   ];
 
-  let fetchedKeyFiles = 0;
-  for (const filePath of keyFiles) {
-    if (fetchedKeyFiles >= 3) break;
-
-    try {
-      const fileResponse = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
-        { headers }
-      );
-      if (fileResponse.ok) {
-        const fileData = await fileResponse.json();
-        if (fileData.size && fileData.size < 50000) {
-          const fileContent = Buffer.from(fileData.content, "base64").toString("utf-8");
-          const extension = filePath.split(".").pop() || "text";
-          contentParts.push(`## ${filePath}\n`);
-          contentParts.push(`\`\`\`${extension}`);
-          contentParts.push(fileContent);
-          contentParts.push("```\n");
-          fetchedKeyFiles++;
+  const fileResults = await Promise.all(
+    keyFiles.map(async (filePath) => {
+      try {
+        const fileResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+          { headers }
+        );
+        if (fileResponse.ok) {
+          const fileData = await fileResponse.json();
+          if (fileData.size && fileData.size < 50000) {
+            const fileContent = Buffer.from(fileData.content, "base64").toString("utf-8");
+            const extension = filePath.split(".").pop() || "text";
+            return { filePath, extension, fileContent };
+          }
         }
+      } catch {
+        // File not available
       }
-    } catch {
-      // File not available, continue
-    }
+      return null;
+    })
+  );
+
+  for (const result of fileResults.filter(Boolean).slice(0, 3)) {
+    contentParts.push(`## ${result!.filePath}\n`);
+    contentParts.push(`\`\`\`${result!.extension}`);
+    contentParts.push(result!.fileContent);
+    contentParts.push("```\n");
   }
 
   return {
