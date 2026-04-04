@@ -25,8 +25,8 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 
 - [x] **Conversion History Page** — Full paginated list at `/conversions`
 - [ ] **Bookmark/Favorite Chapters** — Save favorites for quick reference
-- [ ] **Progress Resume** — Remember where user left off in a textbook
-- [ ] **Share via Link** — Generate shareable public links for community conversions
+- [x] **Progress Resume** — Remember where user left off in a textbook
+- [x] **Share via Link** — Generate shareable public links for community conversions
 - [ ] **Email Notifications** — Streak reminders, weekly progress summaries
 - [ ] **Flashcard Deck Management** — Custom decks, merge flashcards from multiple conversions
 - [x] **Quiz Retry with Wrong Answers Only** — Re-quiz only missed questions
@@ -50,5 +50,5 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 - [x] **Migrate middleware to proxy** — Next.js 16 deprecated `middleware`
 - [ ] **Add unit tests** — Vitest for API routes and utilities
 - [ ] **Add E2E tests** — Playwright for critical user flows
-- [ ] **OpenGraph / SEO meta tags** — Dynamic OG images for shared conversions
+- [x] **OpenGraph / SEO meta tags** — Dynamic OG metadata for shared conversions
 - [ ] **API Rate Limiting** — Per-user rate limits beyond subscription caps

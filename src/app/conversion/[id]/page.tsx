@@ -9,17 +9,19 @@ import {
   BrainCircuit,
   Calendar,
   Check,
+  ClipboardCheck,
   Download,
   ExternalLink,
   FileText,
   Layers,
+  Link2,
   Loader2,
   Sparkles,
   Zap,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
-import { AuthGuard, useAuth } from "@/components/auth/auth-guard";
+import type { User } from "@supabase/supabase-js";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TEXTBOOK_LEVELS, AI_PROVIDERS } from "@/lib/constants";
 import { exportToMarkdown, downloadMarkdown, exportToPDF } from "@/lib/export";
@@ -44,8 +46,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 function ConversionViewerContent() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
   const supabase = createClient();
+
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   const conversionId = params.id as string;
 
@@ -53,12 +57,26 @@ function ConversionViewerContent() {
   const [chapters, setChapters] = useState<TextbookChapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeLevel, setActiveLevel] = useState<TextbookLevel>(101);
+  const [activeLevel, setActiveLevelRaw] = useState<TextbookLevel>(101);
+
+  // Restore last active level from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(`apptotext-level-${conversionId}`);
+    if (stored && [101, 201, 301, 401, 501].includes(Number(stored))) {
+      setActiveLevelRaw(Number(stored) as TextbookLevel);
+    }
+  }, [conversionId]);
+
+  function setActiveLevel(level: TextbookLevel) {
+    setActiveLevelRaw(level);
+    localStorage.setItem(`apptotext-level-${conversionId}`, String(level));
+  }
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatePhase, setGeneratePhase] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const fetchConversion = useCallback(async () => {
     try {
@@ -66,7 +84,6 @@ function ConversionViewerContent() {
         .from("conversions")
         .select("*")
         .eq("id", conversionId)
-        .eq("user_id", user.id)
         .single();
 
       if (fetchError) throw fetchError;
@@ -74,7 +91,7 @@ function ConversionViewerContent() {
     } catch {
       setError("Conversion not found or you do not have access.");
     }
-  }, [supabase, conversionId, user.id]);
+  }, [supabase, conversionId]);
 
   const fetchChapters = useCallback(async () => {
     try {
@@ -94,13 +111,21 @@ function ConversionViewerContent() {
   }, [supabase, conversionId]);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      setAuthLoaded(true);
+    });
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!authLoaded) return;
     async function load() {
       setIsLoading(true);
       await Promise.all([fetchConversion(), fetchChapters()]);
       setIsLoading(false);
     }
     load();
-  }, [fetchConversion, fetchChapters]);
+  }, [authLoaded, fetchConversion, fetchChapters]);
 
   const chaptersForLevel = useMemo(
     () => chapters.filter((ch) => ch.level === activeLevel),
@@ -114,6 +139,7 @@ function ConversionViewerContent() {
   }, [chapters]);
 
   const hasContentForActiveLevel = levelsWithContent.has(activeLevel);
+  const isOwner = user != null && conversion?.user_id === user.id;
 
   const aiProviderName = useMemo(() => {
     if (!conversion) return "";
@@ -131,6 +157,13 @@ function ConversionViewerContent() {
       day: "numeric",
     });
   }, [conversion]);
+
+  function handleCopyLink() {
+    const url = `${window.location.origin}/conversion/${conversionId}`;
+    navigator.clipboard.writeText(url);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
 
   function handleExportMarkdown() {
     if (!conversion || chapters.length === 0) return;
@@ -278,6 +311,26 @@ function ConversionViewerContent() {
                 <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl line-clamp-2">
                   {conversion.title}
                 </h1>
+                {conversion.is_public && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyLink}
+                    className="shrink-0"
+                  >
+                    {linkCopied ? (
+                      <>
+                        <ClipboardCheck className="size-3.5" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Link2 className="size-3.5" />
+                        Share
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <a
@@ -395,6 +448,12 @@ function ConversionViewerContent() {
                         <h3 className="mb-2 text-lg font-semibold text-foreground">
                           {level.level}-Level Content Not Yet Generated
                         </h3>
+                        {!isOwner ? (
+                          <p className="max-w-sm text-sm text-muted-foreground">
+                            The owner hasn&apos;t generated this level yet.
+                          </p>
+                        ) : (
+                        <>
                         <p className="mb-6 max-w-sm text-sm text-muted-foreground">
                           Generate {level.name.toLowerCase()}-level textbook
                           content for this conversion using{" "}
@@ -423,6 +482,8 @@ function ConversionViewerContent() {
                             </>
                           )}
                         </Button>
+                        </>
+                        )}
                       </CardContent>
                     </Card>
                   )}
@@ -592,9 +653,5 @@ function ConversionViewerContent() {
 }
 
 export default function ConversionPage() {
-  return (
-    <AuthGuard>
-      <ConversionViewerContent />
-    </AuthGuard>
-  );
+  return <ConversionViewerContent />;
 }
