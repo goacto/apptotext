@@ -38,7 +38,7 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 - [ ] **Learning Paths** — Curated sequences for specific tech stacks
 - [ ] **Code Playground** — Interactive code sandbox in chapters
 - [ ] **Mobile App (React Native)** — Native flashcard study on-the-go
-- [ ] **Spaced Repetition Analytics** — Retention curves, optimal review times
+- [x] **Spaced Repetition Analytics** — Mastery tracking, due/new/learning/mastered breakdown
 - [ ] **Leaderboard Seasons** — Monthly resets with seasonal badges
 - [ ] **GOACTO Ecosystem SSO** — Single sign-on across all GOACTO apps
 - [ ] **GOACTO Contribution Score** — Cross-app contribution metric
@@ -48,7 +48,7 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 ## Technical Debt
 
 - [x] **Migrate middleware to proxy** — Next.js 16 deprecated `middleware`
-- [ ] **Add unit tests** — Vitest for API routes and utilities
+- [x] **Add unit tests** — Vitest for rate limiter and SM-2 algorithm
 - [ ] **Add E2E tests** — Playwright for critical user flows
 - [x] **OpenGraph / SEO meta tags** — Dynamic OG metadata for shared conversions
-- [ ] **API Rate Limiting** — Per-user rate limits beyond subscription caps
+- [x] **API Rate Limiting** — Per-user sliding window rate limits on all API routes

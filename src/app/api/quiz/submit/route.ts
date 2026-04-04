@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { TextbookLevel } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
+import { rateLimit } from "@/lib/rate-limit";
 
 interface QuizSubmitBody {
   conversion_id: string;
@@ -31,6 +32,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
+      );
+    }
+
+    const { allowed } = rateLimit(`quiz:${user.id}`, 20);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment." },
+        { status: 429 }
       );
     }
 

@@ -299,6 +299,53 @@ function FlashcardStudyContent() {
   const progressPercent =
     totalInQueue > 0 ? Math.round((reviewedCount / totalInQueue) * 100) : 0;
 
+  // ---- Analytics derived from progress data --------------------------------
+  const analytics = (() => {
+    const now = new Date();
+    let newCount = 0;
+    let dueCount = 0;
+    let learningCount = 0; // 1-3 repetitions
+    let masteredCount = 0; // 4+ repetitions
+    let totalReviews = 0;
+    let avgEaseFactor = 0;
+
+    for (const card of flashcards) {
+      const progress = progressMap.get(card.id);
+      if (!progress) {
+        newCount++;
+        continue;
+      }
+      totalReviews += progress.repetitions;
+      avgEaseFactor += progress.ease_factor;
+
+      const nextReview = new Date(progress.next_review);
+      if (nextReview <= now) {
+        dueCount++;
+      }
+      if (progress.repetitions >= 4) {
+        masteredCount++;
+      } else {
+        learningCount++;
+      }
+    }
+
+    const reviewedCards = flashcards.length - newCount;
+    return {
+      total: flashcards.length,
+      newCount,
+      dueCount,
+      learningCount,
+      masteredCount,
+      totalReviews,
+      avgEaseFactor: reviewedCards > 0
+        ? Math.round((avgEaseFactor / reviewedCards) * 100) / 100
+        : 2.5,
+      masteryPercent: flashcards.length > 0
+        ? Math.round((masteredCount / flashcards.length) * 100)
+        : 0,
+    };
+  })();
+
   // ---- Loading state -------------------------------------------------------
 
   if (isLoading) {
@@ -450,6 +497,55 @@ function FlashcardStudyContent() {
                   <Layers className="size-4" />
                   Study All ({flashcards.length})
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Spaced Repetition Analytics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Study Analytics</CardTitle>
+              <CardDescription>Spaced repetition progress</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Mastery bar */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Mastery</span>
+                  <span className="font-medium">{analytics.masteryPercent}%</span>
+                </div>
+                <Progress value={analytics.masteryPercent} />
+              </div>
+
+              {/* Stat grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-foreground">{analytics.newCount}</p>
+                  <p className="text-[10px] text-muted-foreground">New</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-orange-500">{analytics.dueCount}</p>
+                  <p className="text-[10px] text-muted-foreground">Due</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-blue-500">{analytics.learningCount}</p>
+                  <p className="text-[10px] text-muted-foreground">Learning</p>
+                </div>
+                <div className="rounded-lg border px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-green-500">{analytics.masteredCount}</p>
+                  <p className="text-[10px] text-muted-foreground">Mastered</p>
+                </div>
+              </div>
+
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Total reviews</span>
+                  <span className="font-medium text-foreground">{analytics.totalReviews}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Avg ease factor</span>
+                  <span className="font-medium text-foreground">{analytics.avgEaseFactor}</span>
+                </div>
               </div>
             </CardContent>
           </Card>

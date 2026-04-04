@@ -11,6 +11,7 @@ import {
   getQuizUserPrompt,
 } from "@/lib/ai/prompts";
 import { canGenerate, incrementGenerationCount } from "@/lib/subscription";
+import { rateLimit } from "@/lib/rate-limit";
 
 type GeneratePhase = "chapter" | "flashcards" | "quiz";
 
@@ -93,6 +94,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
+      );
+    }
+
+    const { allowed, remaining } = rateLimit(`generate:${user.id}`, 20);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment." },
+        { status: 429, headers: { "X-RateLimit-Remaining": String(remaining) } }
       );
     }
 
