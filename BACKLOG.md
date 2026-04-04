@@ -17,13 +17,13 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 ## High Priority
 
 - [ ] **Streaming AI Responses** — Stream textbook generation in real-time instead of waiting for full response
-- [ ] **Multi-Chapter Generation** — Generate 3-5 chapters per level for deeper learning
-- [ ] **GitHub OAuth Sign-In** — Enable GitHub OAuth provider in Supabase (frontend code ready, needs Supabase dashboard config)
+- [x] **Multi-Chapter Generation** — Generate 3 chapters per level for deeper learning
+- [x] **GitHub OAuth Sign-In** — Enable GitHub OAuth provider in Supabase
 - [x] **Search & Filter** — Find conversions by title, provider, or date
 
 ## Medium Priority
 
-- [ ] **Conversion History Page** — Full paginated list at `/conversions`
+- [x] **Conversion History Page** — Full paginated list at `/conversions`
 - [ ] **Bookmark/Favorite Chapters** — Save favorites for quick reference
 - [ ] **Progress Resume** — Remember where user left off in a textbook
 - [ ] **Share via Link** — Generate shareable public links for community conversions
@@ -47,7 +47,7 @@ Future features and next steps for AppToText, part of the GOACTO ecosystem.
 
 ## Technical Debt
 
-- [ ] **Migrate middleware to proxy** — Next.js 16 deprecated `middleware`
+- [x] **Migrate middleware to proxy** — Next.js 16 deprecated `middleware`
 - [ ] **Add unit tests** — Vitest for API routes and utilities
 - [ ] **Add E2E tests** — Playwright for critical user flows
 - [ ] **OpenGraph / SEO meta tags** — Dynamic OG images for shared conversions

@@ -31,7 +31,15 @@ export function getTextbookUserPrompt(
   level: TextbookLevel,
   chapterNumber: number
 ): string {
-  return `Create Chapter ${chapterNumber} of a ${level}-level textbook about "${title}".
+  const chapterFocus = chapterNumber === 1
+    ? "Focus on introducing the core concepts, setup, and foundational ideas."
+    : chapterNumber === 2
+      ? "Focus on practical application, patterns, and hands-on examples. Build on the foundational concepts from Chapter 1."
+      : "Focus on advanced techniques, real-world scenarios, and deeper insights. Build on everything covered in earlier chapters.";
+
+  return `Create Chapter ${chapterNumber} of 3 in a ${level}-level textbook about "${title}".
+
+${chapterFocus}
 
 Source material to base the chapter on:
 ---
@@ -39,7 +47,7 @@ ${sourceContent.slice(0, 12000)}
 ---
 
 Generate a comprehensive chapter that teaches this material at the ${level} level. Include:
-1. Chapter title
+1. Chapter title (include "Chapter ${chapterNumber}:" prefix)
 2. Learning objectives (3-5 bullet points)
 3. Main content with code examples
 4. Key concepts list (as a JSON array of strings at the very end, wrapped in \`\`\`json blocks labeled KEY_CONCEPTS)

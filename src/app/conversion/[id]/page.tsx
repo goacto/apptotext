@@ -159,7 +159,10 @@ function ConversionViewerContent() {
     }
   }
 
-  async function callGeneratePhase(phase: string) {
+  async function callGeneratePhase(
+    phase: string,
+    chapterNumber?: number
+  ) {
     const response = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -167,6 +170,7 @@ function ConversionViewerContent() {
         conversion_id: conversion!.id,
         level: activeLevel,
         phase,
+        ...(chapterNumber !== undefined && { chapter_number: chapterNumber }),
       }),
     });
 
@@ -180,6 +184,8 @@ function ConversionViewerContent() {
     return response.json();
   }
 
+  const TOTAL_CHAPTERS = 3;
+
   async function handleGenerate() {
     if (!conversion) return;
 
@@ -187,11 +193,13 @@ function ConversionViewerContent() {
     setGenerateError(null);
 
     try {
-      // Phase 1: Generate chapter (1 AI call)
-      setGeneratePhase("Generating chapter...");
-      await callGeneratePhase("chapter");
+      // Generate 3 chapters sequentially (1 AI call each, within 60s limit)
+      for (let i = 1; i <= TOTAL_CHAPTERS; i++) {
+        setGeneratePhase(`Generating chapter ${i} of ${TOTAL_CHAPTERS}...`);
+        await callGeneratePhase("chapter", i);
+      }
 
-      // Phase 2: Generate flashcards + quiz in parallel (1 AI call each)
+      // Generate flashcards + quiz in parallel (1 AI call each)
       setGeneratePhase("Generating flashcards & quiz...");
       await Promise.all([
         callGeneratePhase("flashcards"),
@@ -201,6 +209,8 @@ function ConversionViewerContent() {
       // Refresh chapters after generation
       await fetchChapters();
     } catch (err) {
+      // Still refresh in case some chapters were generated before the error
+      await fetchChapters();
       setGenerateError(
         err instanceof Error ? err.message : "Failed to generate content."
       );

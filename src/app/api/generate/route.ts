@@ -19,6 +19,7 @@ interface GenerateRequestBody {
   level: TextbookLevel;
   ai_provider: AIProvider;
   phase: GeneratePhase;
+  chapter_number?: number;
 }
 
 export const maxDuration = 60;
@@ -145,33 +146,43 @@ export async function POST(request: NextRequest) {
 
     // ── CHAPTER PHASE ──────────────────────────────────────────────
     if (phase === "chapter") {
-      // Check generation limits only on chapter (the "main" generation)
-      const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
-      if (!allowed) {
-        const limitMessages: Record<string, string> = {
-          free: "Free tier limit reached (3 generations). Upgrade to a paid plan for more generations per month.",
-          standard: "Monthly generation limit reached (10). Upgrade to Pro for 25/month or Master for 50/month, or wait for your next billing cycle.",
-          pro: "Monthly generation limit reached (25). Upgrade to Master for 50/month, or wait for your next billing cycle.",
-          master: "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.",
-        };
-        const message = limitMessages[plan] ?? limitMessages.free;
-        return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+      const chapterNumber = body.chapter_number ?? 1;
+      if (chapterNumber < 1 || chapterNumber > 5) {
+        return NextResponse.json(
+          { error: "chapter_number must be between 1 and 5" },
+          { status: 400 }
+        );
       }
 
-      // Check if chapter already exists for this level
-      const { data: existingChapter } = await supabase
-        .from("chapters")
-        .select("id")
-        .eq("conversion_id", body.conversion_id)
-        .eq("level", body.level)
-        .limit(1)
-        .single();
+      // Check generation limits only on chapter 1
+      if (chapterNumber === 1) {
+        const { allowed, remaining, plan } = await canGenerate(supabase, user.id);
+        if (!allowed) {
+          const limitMessages: Record<string, string> = {
+            free: "Free tier limit reached (3 generations). Upgrade to a paid plan for more generations per month.",
+            standard: "Monthly generation limit reached (10). Upgrade to Pro for 25/month or Master for 50/month, or wait for your next billing cycle.",
+            pro: "Monthly generation limit reached (25). Upgrade to Master for 50/month, or wait for your next billing cycle.",
+            master: "Monthly generation limit reached (50). Your limit resets at the start of your next billing cycle.",
+          };
+          const message = limitMessages[plan] ?? limitMessages.free;
+          return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+        }
 
-      if (existingChapter) {
-        return NextResponse.json(
-          { error: "Content already generated for this level. Delete existing content first." },
-          { status: 409 }
-        );
+        // Check if any chapters already exist for this level
+        const { data: existingChapter } = await supabase
+          .from("chapters")
+          .select("id")
+          .eq("conversion_id", body.conversion_id)
+          .eq("level", body.level)
+          .limit(1)
+          .single();
+
+        if (existingChapter) {
+          return NextResponse.json(
+            { error: "Content already generated for this level. Delete existing content first." },
+            { status: 409 }
+          );
+        }
       }
 
       const sourceContent = conversion.source_content as string;
@@ -181,7 +192,7 @@ export async function POST(request: NextRequest) {
         { role: "system", content: getTextbookSystemPrompt(body.level) },
         {
           role: "user",
-          content: getTextbookUserPrompt(title, sourceContent, body.level, 1),
+          content: getTextbookUserPrompt(title, sourceContent, body.level, chapterNumber),
         },
       ]);
 
@@ -194,7 +205,7 @@ export async function POST(request: NextRequest) {
         .insert({
           conversion_id: body.conversion_id,
           level: body.level,
-          chapter_number: 1,
+          chapter_number: chapterNumber,
           title: chapterTitle,
           content: chapterContent,
           key_concepts: keyConcepts,
@@ -209,7 +220,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      await incrementGenerationCount(supabase, user.id);
+      // Increment generation count only on chapter 1
+      if (chapterNumber === 1) {
+        await incrementGenerationCount(supabase, user.id);
+      }
 
       return NextResponse.json({ chapter });
     }
