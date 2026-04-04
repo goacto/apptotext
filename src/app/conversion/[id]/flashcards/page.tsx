@@ -93,9 +93,12 @@ const QUALITY_OPTIONS: QualityOption[] = [
 // Helper: determine which cards are due / new
 // ---------------------------------------------------------------------------
 
+type StudyMode = "due" | "all";
+
 function buildStudyQueue(
   flashcards: Flashcard[],
-  progressMap: Map<string, FlashcardProgress>
+  progressMap: Map<string, FlashcardProgress>,
+  mode: StudyMode = "due"
 ): Flashcard[] {
   const now = new Date();
 
@@ -106,7 +109,6 @@ function buildStudyQueue(
   for (const card of flashcards) {
     const progress = progressMap.get(card.id);
     if (!progress) {
-      // New card — no progress record yet
       newCards.push(card);
     } else {
       const nextReview = new Date(progress.next_review);
@@ -118,7 +120,9 @@ function buildStudyQueue(
     }
   }
 
-  // Due cards first, then new cards. Skip not-yet-due.
+  if (mode === "all") {
+    return [...dueCards, ...newCards, ...notYetDue];
+  }
   return [...dueCards, ...newCards];
 }
 
@@ -151,6 +155,7 @@ function FlashcardStudyContent() {
   const [error, setError] = useState<string | null>(null);
 
   // Study session state
+  const [studyMode, setStudyMode] = useState<StudyMode>("due");
   const [studyQueue, setStudyQueue] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -267,9 +272,20 @@ function FlashcardStudyContent() {
   }
 
   function handleReviewAgain() {
-    // Re-fetch and restart the session
+    setStudyMode("due");
     setSessionComplete(false);
     fetchData();
+  }
+
+  function handleStudyAll() {
+    setStudyMode("all");
+    const queue = buildStudyQueue(flashcards, progressMap, "all");
+    setStudyQueue(queue);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setReviewedCount(0);
+    setXpEarned(0);
+    setSessionComplete(queue.length === 0);
   }
 
   // ---- Derived values ------------------------------------------------------
@@ -424,9 +440,15 @@ function FlashcardStudyContent() {
                   <BookOpen className="size-4" />
                   Back to Textbook
                 </Button>
-                <Button onClick={handleReviewAgain}>
-                  <RotateCcw className="size-4" />
-                  Review Again
+                {!allCaughtUp && (
+                  <Button variant="outline" onClick={handleReviewAgain}>
+                    <RotateCcw className="size-4" />
+                    Review Again
+                  </Button>
+                )}
+                <Button onClick={handleStudyAll}>
+                  <Layers className="size-4" />
+                  Study All ({flashcards.length})
                 </Button>
               </div>
             </CardContent>

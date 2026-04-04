@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Bookmark,
   BookOpen,
   BrainCircuit,
   Calendar,
@@ -77,6 +78,36 @@ function ConversionViewerContent() {
   const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [bookmarkedChapters, setBookmarkedChapters] = useState<Set<string>>(new Set());
+
+  // Load bookmarks from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(`apptotext-bookmarks-${conversionId}`);
+    if (stored) {
+      try {
+        setBookmarkedChapters(new Set(JSON.parse(stored)));
+      } catch {
+        // Ignore corrupt data
+      }
+    }
+  }, [conversionId]);
+
+  function toggleBookmark(chapterId: string) {
+    setBookmarkedChapters((prev) => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) {
+        next.delete(chapterId);
+      } else {
+        next.add(chapterId);
+      }
+      localStorage.setItem(
+        `apptotext-bookmarks-${conversionId}`,
+        JSON.stringify([...next])
+      );
+      return next;
+    });
+  }
 
   const fetchConversion = useCallback(async () => {
     try {
@@ -217,6 +248,66 @@ function ConversionViewerContent() {
     return response.json();
   }
 
+  async function streamChapter(chapterNumber: number) {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversion_id: conversion!.id,
+        level: activeLevel,
+        phase: "chapter",
+        chapter_number: chapterNumber,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(
+        errorData?.error || `Generation failed (${response.status})`
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("No response body for streaming");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    setStreamingContent("");
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const parsed = JSON.parse(line.slice(6));
+          if (parsed.text) {
+            setStreamingContent((prev) => (prev ?? "") + parsed.text);
+          }
+          if (parsed.done) {
+            setStreamingContent(null);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== "Unexpected end of JSON input") {
+            throw e;
+          }
+        }
+      }
+    }
+    setStreamingContent(null);
+  }
+
   const TOTAL_CHAPTERS = 3;
 
   async function handleGenerate() {
@@ -226,13 +317,13 @@ function ConversionViewerContent() {
     setGenerateError(null);
 
     try {
-      // Generate 3 chapters sequentially (1 AI call each, within 60s limit)
+      // Stream 3 chapters sequentially with live preview
       for (let i = 1; i <= TOTAL_CHAPTERS; i++) {
         setGeneratePhase(`Generating chapter ${i} of ${TOTAL_CHAPTERS}...`);
-        await callGeneratePhase("chapter", i);
+        await streamChapter(i);
       }
 
-      // Generate flashcards + quiz in parallel (1 AI call each)
+      // Generate flashcards + quiz in parallel (non-streamed, need full JSON)
       setGeneratePhase("Generating flashcards & quiz...");
       await Promise.all([
         callGeneratePhase("flashcards"),
@@ -242,7 +333,6 @@ function ConversionViewerContent() {
       // Refresh chapters after generation
       await fetchChapters();
     } catch (err) {
-      // Still refresh in case some chapters were generated before the error
       await fetchChapters();
       setGenerateError(
         err instanceof Error ? err.message : "Failed to generate content."
@@ -250,6 +340,7 @@ function ConversionViewerContent() {
     } finally {
       setIsGenerating(false);
       setGeneratePhase(null);
+      setStreamingContent(null);
     }
   }
 
@@ -397,6 +488,23 @@ function ConversionViewerContent() {
                     </p>
                   </div>
 
+                  {/* Streaming preview */}
+                  {isGenerating &&
+                    activeLevel === level.level &&
+                    streamingContent !== null && (
+                      <Card className="mb-6">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Loader2 className="size-4 animate-spin" />
+                            {generatePhase}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <MarkdownRenderer content={streamingContent} />
+                        </CardContent>
+                      </Card>
+                    )}
+
                   {/* Content or generate prompt */}
                   {levelsWithContent.has(level.level) ? (
                     <div className="space-y-8">
@@ -404,10 +512,24 @@ function ConversionViewerContent() {
                         .filter((ch) => ch.level === level.level)
                         .map((chapter) => (
                           <Card key={chapter.id}>
-                            <CardHeader>
+                            <CardHeader className="flex flex-row items-start justify-between gap-2">
                               <CardTitle className="text-lg">
                                 {chapter.title}
                               </CardTitle>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => toggleBookmark(chapter.id)}
+                                className="shrink-0"
+                              >
+                                <Bookmark
+                                  className={`size-4 ${
+                                    bookmarkedChapters.has(chapter.id)
+                                      ? "fill-primary text-primary"
+                                      : "text-muted-foreground"
+                                  }`}
+                                />
+                              </Button>
                             </CardHeader>
                             <CardContent className="space-y-4">
                               <MarkdownRenderer content={chapter.content} />

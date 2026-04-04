@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { AIProvider, TextbookLevel } from "@/lib/types";
-import { callAI } from "@/lib/ai/provider";
+import { callAI, streamAI } from "@/lib/ai/provider";
 import {
   getTextbookSystemPrompt,
   getTextbookUserPrompt,
@@ -188,44 +188,69 @@ export async function POST(request: NextRequest) {
       const sourceContent = conversion.source_content as string;
       const title = conversion.title as string;
 
-      const chapterResponse = await callAI(provider, [
-        { role: "system", content: getTextbookSystemPrompt(body.level) },
+      const aiMessages = [
+        { role: "system" as const, content: getTextbookSystemPrompt(body.level) },
         {
-          role: "user",
+          role: "user" as const,
           content: getTextbookUserPrompt(title, sourceContent, body.level, chapterNumber),
         },
-      ]);
+      ];
 
-      const chapterContent = chapterResponse.content;
-      const keyConcepts = extractKeyConcepts(chapterContent);
-      const chapterTitle = extractChapterTitle(chapterContent);
+      // Stream the chapter content via SSE
+      const aiStream = streamAI(provider, aiMessages);
+      const reader = aiStream.getReader();
 
-      const { data: chapter, error: chapterError } = await supabase
-        .from("chapters")
-        .insert({
-          conversion_id: body.conversion_id,
-          level: body.level,
-          chapter_number: chapterNumber,
-          title: chapterTitle,
-          content: chapterContent,
-          key_concepts: keyConcepts,
-        })
-        .select()
-        .single();
+      const encoder = new TextEncoder();
+      let fullContent = "";
 
-      if (chapterError) {
-        return NextResponse.json(
-          { error: "Failed to store chapter", details: chapterError.message },
-          { status: 500 }
-        );
-      }
+      const responseStream = new ReadableStream({
+        async pull(controller) {
+          const { done, value } = await reader.read();
+          if (done) {
+            // Stream complete — save to DB, send final event
+            const keyConcepts = extractKeyConcepts(fullContent);
+            const chapterTitle = extractChapterTitle(fullContent);
 
-      // Increment generation count only on chapter 1
-      if (chapterNumber === 1) {
-        await incrementGenerationCount(supabase, user.id);
-      }
+            const { data: chapter, error: chapterError } = await supabase
+              .from("chapters")
+              .insert({
+                conversion_id: body.conversion_id,
+                level: body.level,
+                chapter_number: chapterNumber,
+                title: chapterTitle,
+                content: fullContent,
+                key_concepts: keyConcepts,
+              })
+              .select()
+              .single();
 
-      return NextResponse.json({ chapter });
+            if (chapterNumber === 1) {
+              await incrementGenerationCount(supabase, user.id);
+            }
+
+            const doneData = JSON.stringify({
+              done: true,
+              chapter: chapter ?? { id: null },
+              error: chapterError?.message ?? null,
+            });
+            controller.enqueue(encoder.encode(`data: ${doneData}\n\n`));
+            controller.close();
+            return;
+          }
+
+          fullContent += value;
+          const chunkData = JSON.stringify({ text: value });
+          controller.enqueue(encoder.encode(`data: ${chunkData}\n\n`));
+        },
+      });
+
+      return new Response(responseStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
     }
 
     // ── FLASHCARDS PHASE ───────────────────────────────────────────
