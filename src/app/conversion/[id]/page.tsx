@@ -24,6 +24,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { TutorChat } from "@/components/tutor-chat";
 import { TEXTBOOK_LEVELS, AI_PROVIDERS } from "@/lib/constants";
 import { exportToMarkdown, downloadMarkdown, exportToPDF } from "@/lib/export";
 import type {
@@ -770,6 +771,15 @@ function ConversionViewerContent() {
           </aside>
         </div>
       </div>
+
+      {/* AI Tutor Chat — appears when viewing a chapter */}
+      {hasContentForActiveLevel && chaptersForLevel.length > 0 && (
+        <TutorChat
+          conversionId={conversionId}
+          chapterId={chaptersForLevel[0].id}
+          chapterTitle={chaptersForLevel[0].title}
+        />
+      )}
     </div>
   );
 }

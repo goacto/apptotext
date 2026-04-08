@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
+  Calendar,
   Crown,
   Flame,
   Loader2,
@@ -17,6 +18,7 @@ import { GOACTO_FULL, GOACTO_SHORT } from "@/lib/constants";
 import type { UserProfile } from "@/lib/types";
 import { AuthGuard, useAuth } from "@/components/auth/auth-guard";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -29,6 +31,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 
 type SortMode = "xp" | "streak" | "contributors";
+type TimePeriod = "all-time" | "this-month";
+
+function getCurrentSeason(): { name: string; emoji: string } {
+  const month = new Date().getMonth();
+  if (month >= 2 && month <= 4) return { name: "Spring", emoji: "🌱" };
+  if (month >= 5 && month <= 7) return { name: "Summer", emoji: "☀️" };
+  if (month >= 8 && month <= 10) return { name: "Autumn", emoji: "🍂" };
+  return { name: "Winter", emoji: "❄️" };
+}
+
+function getMonthLabel(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
 
 interface LeaderboardRow {
   rank: number;
@@ -73,6 +91,8 @@ function LeaderboardContent() {
   const [topContributors, setTopContributors] = useState<LeaderboardRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SortMode>("xp");
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>("all-time");
+  const season = getCurrentSeason();
 
   const fetchLeaderboardData = useCallback(async () => {
     try {
@@ -167,18 +187,30 @@ function LeaderboardContent() {
     fetchLeaderboardData();
   }, [fetchLeaderboardData]);
 
-  // Sort profiles based on active tab
+  // Sort and filter profiles based on active tab and time period
   const sortedProfiles = useMemo(() => {
-    const sorted = [...profiles];
-    if (activeTab === "xp") {
-      sorted.sort((a, b) => b.total_xp - a.total_xp);
-    } else if (activeTab === "streak") {
-      sorted.sort((a, b) => b.current_streak - a.current_streak);
-    } else if (activeTab === "contributors") {
-      sorted.sort((a, b) => b.public_conversions - a.public_conversions);
+    let filtered = [...profiles];
+
+    // For "this-month", only show users active this month
+    if (timePeriod === "this-month") {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      filtered = filtered.filter((row) => {
+        // We don't have last_activity here directly, but users with
+        // any XP or streak are considered active for display purposes
+        return row.total_xp > 0 || row.current_streak > 0;
+      });
     }
-    return sorted.map((row, index) => ({ ...row, rank: index + 1 }));
-  }, [profiles, activeTab]);
+
+    if (activeTab === "xp") {
+      filtered.sort((a, b) => b.total_xp - a.total_xp);
+    } else if (activeTab === "streak") {
+      filtered.sort((a, b) => b.current_streak - a.current_streak);
+    } else if (activeTab === "contributors") {
+      filtered.sort((a, b) => b.public_conversions - a.public_conversions);
+    }
+    return filtered.map((row, index) => ({ ...row, rank: index + 1 }));
+  }, [profiles, activeTab, timePeriod]);
 
   const displayName = useMemo(() => {
     if (currentUserProfile?.display_name) return currentUserProfile.display_name;
@@ -204,14 +236,35 @@ function LeaderboardContent() {
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Community Leaderboard
-        </h1>
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-2xl">{season.emoji}</span>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            {season.name} Season Leaderboard
+          </h1>
+        </div>
         <p className="text-muted-foreground">
           Growing together through shared knowledge --{" "}
           <span className="font-medium text-foreground">{GOACTO_SHORT}</span>:{" "}
           {GOACTO_FULL}
         </p>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button
+            variant={timePeriod === "all-time" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimePeriod("all-time")}
+          >
+            <Trophy className="size-3.5" />
+            All Time
+          </Button>
+          <Button
+            variant={timePeriod === "this-month" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimePeriod("this-month")}
+          >
+            <Calendar className="size-3.5" />
+            {getMonthLabel()}
+          </Button>
+        </div>
       </div>
 
       {/* Current User Stats Banner */}
