@@ -1,0 +1,12 @@
+Raise maxDuration from 60 to 300 for /api/generate and /api/chat
+
+Found while doing the end-to-end prod verification after PR #8 (claude-sonnet-4-6), 2026-10-20 3:08 PM ET:
+- convert 201. Each of chapters 1-3 streamed for ~61s (about 32 KB of SSE) and was then cut off: no "done" event.
+- Flashcards and quiz then returned 400 "Chapter must be generated before ...".
+- DB: 0 chapters, 0 guide_chapters, 0 ledger rows, generation_count 0 (no quota charged). The guide_version was left
+  'generating' until its lease expired, which is the expected stale path.
+- Cause: maxDuration = 60 and Vercel kills the invocation mid-stream. Project is on Fluid compute
+  (defaultResourceConfig.fluid=true, functionDefaultTimeout=300). Hobby + Fluid maximum is 300s (vercel.com/docs/functions/limitations).
+Fix: maxDuration = 300 in generate and chat; new test src/app/api/generate/max-duration.test.ts.
+Checks: vitest 75/75, tsc clean, eslint clean, next build OK.
+Known gap (not in this PR): an invocation that is killed never runs the ledger callback, so its Anthropic spend isn't recorded.
