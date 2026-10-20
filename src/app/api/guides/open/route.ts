@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { rateLimit } from "@/lib/rate-limit";
+import { durableRateLimit } from "@/lib/limits";
 import { canGenerate, chargeGenerationOnce, getUserSubscription, planFromStatus } from "@/lib/subscription";
 import { copyVersionToConversion } from "@/lib/cache/guides";
 import { recordLedger } from "@/lib/ledger";
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
-  const { allowed: rateOk } = rateLimit(`guides-open:${user.id}`, 60, 3_600_000);
+  const rateOk = await durableRateLimit(createAdminClient(), `guides-open:${user.id}`, 60, 3_600_000);
   if (!rateOk) return NextResponse.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
 
   const body = (await request.json().catch(() => ({}))) as { conversion_id?: string; level?: number; version_id?: string };

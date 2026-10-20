@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { rateLimit } from "@/lib/rate-limit";
+import { durableRateLimit } from "@/lib/limits";
 import { getGuidePreview } from "@/lib/cache/preview";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   if (!UUID.test(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const { allowed } = rateLimit(`guides-preview:${clientIp(request)}`, 120, 3_600_000);
+  const allowed = await durableRateLimit(createAdminClient(), `guides-preview:${clientIp(request)}`, 120, 3_600_000);
   if (!allowed) return NextResponse.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
 
   const preview = await getGuidePreview(createAdminClient(), id);
