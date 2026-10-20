@@ -12,17 +12,17 @@ const PLAN_CONFIG: Record<PlanTier, { price: number; name: string; description: 
   standard: {
     price: 499,
     name: "AppToText Standard",
-    description: "10 generations per month, all AI providers",
+    description: "3 generations per month, all AI providers",
   },
   pro: {
     price: 999,
     name: "AppToText Pro",
-    description: "25 generations per month, all AI providers, priority support",
+    description: "6 generations per month, all AI providers, priority support",
   },
   master: {
     price: 1499,
     name: "AppToText Master",
-    description: "50 generations per month, all AI providers, priority support, early access",
+    description: "10 generations per month, all AI providers, priority support, early access",
   },
 };
 

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         } else {
           await supabase
             .from("profiles")
-            .update({ subscription_status: "free" })
+            .update({ subscription_status: "free", generation_limit_override: null, grandfathered_plan: null })
             .eq("stripe_customer_id", customerId);
         }
         break;
@@ -93,6 +93,9 @@ export async function POST(request: NextRequest) {
           .update({
             subscription_status: "free",
             stripe_subscription_id: null,
+            // Grandfathered limits end when the subscription ends.
+            generation_limit_override: null,
+            grandfathered_plan: null,
           })
           .eq("stripe_customer_id", customerId);
         break;

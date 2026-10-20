@@ -19,6 +19,8 @@ create table if not exists public.profiles (
   subscription_status text not null default 'free',
   generation_count integer not null default 0,
   generation_reset_at timestamp with time zone default now(),
+  generation_limit_override integer,          -- grandfathered limit (see supabase/migrations/20261020_plan_limits_option_a.sql)
+  grandfathered_plan text,
   created_at timestamp with time zone default now()
 );
 
