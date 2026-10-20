@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AI_PROVIDERS } from "@/lib/constants";
 import type { AIProvider } from "@/lib/types";
 import { AuthGuard, useAuth } from "@/components/auth/auth-guard";
+import { UsageToggle } from "@/components/usage/usage-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -451,6 +452,10 @@ function SettingsContent() {
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          <UsageToggle />
 
           <Separator />
 
