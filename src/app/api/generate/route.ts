@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AIProvider, TextbookLevel } from "@/lib/types";
 import { callAI, PROVIDER_MODELS, streamAI } from "@/lib/ai/provider";
+import { extractKeyConcepts } from "@/lib/ai/key-concepts";
 import type { TokenUsage } from "@/lib/ai/pricing";
 import { estimateTokens, finishLedger, progressLedger, recordLedger, startLedger } from "@/lib/ledger";
 import { sha256 } from "@/lib/github/source";
@@ -46,21 +47,6 @@ const CHAPTER_DEADLINE_MS = 265_000;
 const LEDGER_HEARTBEAT_MS = 15_000;
 
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
-
-function extractKeyConcepts(markdown: string): string[] {
-  const jsonMatch = markdown.match(/KEY_CONCEPTS\s*\n```json\s*\n([\s\S]*?)\n```/);
-  if (jsonMatch) {
-    try {
-      const concepts = JSON.parse(jsonMatch[1]);
-      if (Array.isArray(concepts)) {
-        return concepts.map(String);
-      }
-    } catch {
-      // Failed to parse, fall through
-    }
-  }
-  return [];
-}
 
 function extractChapterTitle(markdown: string): string {
   const headingMatch = markdown.match(/^#\s+(.+)$/m);
