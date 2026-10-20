@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { anthropicUsageFromEvent, openAIUsage, PROVIDER_MODELS } from "./provider";
 import { costUsd } from "./pricing";
 import { ledgerRow } from "@/lib/ledger";
+import { PROMPT_VERSION } from "./prompts";
 
 describe("token usage capture (FR-4.7)", () => {
   it("anthropic: message_start + message_delta", () => {
@@ -34,7 +35,7 @@ describe("cost and ledger rows (FR-4.6)", () => {
   it("cache hits cost 0 and carry the prompt version", () => {
     const row = ledgerRow({ phase: "open", outcome: "cache_hit", model: "grok-3", usage: null });
     expect(row.cost_usd).toBe(0);
-    expect(row.prompt_version).toBe("p1");
+    expect(row.prompt_version).toBe(PROMPT_VERSION);
   });
   it("generated rows compute cost", () => {
     const row = ledgerRow({

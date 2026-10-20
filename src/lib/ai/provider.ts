@@ -10,6 +10,18 @@ export const PROVIDER_MODELS: Record<AIProvider, string> = {
 
 export type UsageCallback = (usage: TokenUsage | null) => void;
 
+/** Default output cap for non-chapter calls. */
+export const DEFAULT_MAX_TOKENS = 8192;
+
+export interface StreamOptions {
+  /** Output token cap (chapters use CHAPTER_MAX_TOKENS). */
+  maxTokens?: number;
+  /** Aborts the upstream request (deadline or client disconnect). */
+  signal?: AbortSignal;
+  /** Called with Anthropic's stop_reason (e.g. "end_turn", "max_tokens"). */
+  onStopReason?: (reason: string) => void;
+}
+
 /** Merge a usage fragment from an Anthropic SSE event (message_start / message_delta). */
 export function anthropicUsageFromEvent(parsed: Record<string, unknown>, acc: TokenUsage): TokenUsage {
   const next = { ...acc };
@@ -68,21 +80,22 @@ export async function callAI(
 export function streamAI(
   provider: AIProvider,
   messages: AIMessage[],
-  onUsage?: UsageCallback
+  onUsage?: UsageCallback,
+  opts: StreamOptions = {}
 ): ReadableStream<string> {
   switch (provider) {
     case "claude":
-      return streamClaude(messages, onUsage);
+      return streamClaude(messages, onUsage, opts);
     case "openai":
-      return streamOpenAI(messages, onUsage);
+      return streamOpenAI(messages, onUsage, opts);
     case "grok":
-      return streamGrok(messages, onUsage);
+      return streamGrok(messages, onUsage, opts);
     default:
       throw new Error(`Unknown AI provider: ${provider}`);
   }
 }
 
-function streamClaude(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
+function streamClaude(messages: AIMessage[], onUsage?: UsageCallback, opts: StreamOptions = {}): ReadableStream<string> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("Claude is not configured. ANTHROPIC_API_KEY is missing.");
   }
@@ -94,58 +107,69 @@ function streamClaude(messages: AIMessage[], onUsage?: UsageCallback): ReadableS
 
   return new ReadableStream({
     async start(controller) {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY!,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: PROVIDER_MODELS.claude,
-          stream: true,
-          max_tokens: 8192,
-          system: systemMessage?.content || "",
-          messages: userMessages,
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        const error = await response.text();
-        controller.error(new Error(`Claude API error: ${error}`));
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       let sawUsage = false;
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY!,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: PROVIDER_MODELS.claude,
+            stream: true,
+            max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+            system: systemMessage?.content || "",
+            messages: userMessages,
+          }),
+          signal: opts.signal,
+        });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        if (!response.ok || !response.body) {
+          const error = await response.text();
+          controller.error(new Error(`Claude API error: ${error}`));
+          return;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-              controller.enqueue(parsed.delta.text);
-            } else if (parsed.type === "message_start" || parsed.type === "message_delta") {
-              usage = anthropicUsageFromEvent(parsed, usage);
-              sawUsage = true;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+                controller.enqueue(parsed.delta.text);
+              } else if (parsed.type === "message_start" || parsed.type === "message_delta") {
+                usage = anthropicUsageFromEvent(parsed, usage);
+                sawUsage = true;
+                if (parsed.type === "message_delta" && parsed.delta?.stop_reason) {
+                  opts.onStopReason?.(String(parsed.delta.stop_reason));
+                }
+              }
+            } catch {
+              // Skip unparseable lines
             }
-          } catch {
-            // Skip unparseable lines
           }
         }
+      } catch (err) {
+        // Aborted (deadline / client gone) or network error: report what we know, then fail the stream.
+        onUsage?.(sawUsage ? usage : null);
+        controller.error(err);
+        return;
       }
       onUsage?.(sawUsage ? usage : null);
       controller.close();
@@ -158,18 +182,20 @@ function streamOpenAICompatible(
   headers: Record<string, string>,
   model: string,
   messages: AIMessage[],
-  onUsage?: UsageCallback
+  onUsage?: UsageCallback,
+  opts: StreamOptions = {}
 ): ReadableStream<string> {
   return new ReadableStream({
     async start(controller) {
       const response = await fetch(url, {
+        signal: opts.signal,
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
           model,
           stream: true,
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          max_tokens: 8192,
+          max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
           stream_options: { include_usage: true },
         }),
       });
@@ -215,7 +241,7 @@ function streamOpenAICompatible(
   });
 }
 
-function streamOpenAI(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
+function streamOpenAI(messages: AIMessage[], onUsage?: UsageCallback, opts: StreamOptions = {}): ReadableStream<string> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OpenAI is not configured. OPENAI_API_KEY is missing.");
   }
@@ -224,11 +250,12 @@ function streamOpenAI(messages: AIMessage[], onUsage?: UsageCallback): ReadableS
     { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     "gpt-4o",
     messages,
-    onUsage
+    onUsage,
+    opts
   );
 }
 
-function streamGrok(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
+function streamGrok(messages: AIMessage[], onUsage?: UsageCallback, opts: StreamOptions = {}): ReadableStream<string> {
   if (!process.env.XAI_API_KEY) {
     throw new Error("Grok is not configured. XAI_API_KEY is missing.");
   }
@@ -237,7 +264,8 @@ function streamGrok(messages: AIMessage[], onUsage?: UsageCallback): ReadableStr
     { Authorization: `Bearer ${process.env.XAI_API_KEY}` },
     "grok-3",
     messages,
-    onUsage
+    onUsage,
+    opts
   );
 }
 
