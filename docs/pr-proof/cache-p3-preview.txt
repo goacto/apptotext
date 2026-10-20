@@ -1,0 +1,27 @@
+PR 3: preview + upgrade card (US-3, FR-3.1 to FR-3.4; Zach Q2 = chapter 1 of each cached level, Q3 = Free users may spend their generation)
+
+What ships
+- src/lib/plans.ts
+  - One shared constant for Standard / Pro / Master: prices 499 / 999 / 1499 cents (unchanged), with limits read from subscription.ts.
+  - UPGRADE_HEADLINE = "Unlock the full guide, flashcards and quiz. Plans start at $4.99/month."
+  - safeReturnPath() allows only /conversion/... and /library/... paths.
+- GET /api/guides/[id]/preview (open to signed-out visitors, 120 per IP per hour)
+  - Returns chapter 1 in full, the titles of chapters 2-3, flashcard and quiz counts, version metadata and plans.
+  - Only ready versions; withdrawn or unknown returns 404. Never includes the generator.
+- src/lib/cache/preview.ts holds getGuidePreview(). PR 5 library pages will reuse it.
+- POST /api/stripe/checkout
+  - Accepts optional return_to (validated) and source: "guide_preview". The source goes into metadata only.
+  - success_url = the same guide with ?upgraded=1; cancel_url = the same guide.
+  - Prices and descriptions are byte-identical to before. No Stripe products or prices are created or changed
+    (inline price_data as before).
+- Conversion page
+  - When /api/guides/open returns 403 upgrade_required + preview_available, it loads the preview: chapter 1, locked
+    items as real buttons with text labels that focus the upgrade card, and the upgrade card.
+  - After checkout it shows "Thanks for upgrading! Open the full guide below." The Open button then copies the full level (FR-3.3).
+- Signed-out return: /auth/login?next=<guide> (validated) works for both email and OAuth.
+- Auth callback hardening: ?next= must be a same-site path. Before, "next=@evil.com" produced
+  https://apptotext.com@evil.com, which is a pre-existing open redirect.
+
+Checks: vitest 97/97 (new src/lib/preview-upgrade.test.ts), tsc clean, no new eslint findings, next build OK.
+Prod verification: see the PR comment and the final report. Real Stripe checkout was NOT exercised on prod, because creating a session
+creates a Stripe customer (a Stripe write); it is covered by tests.
