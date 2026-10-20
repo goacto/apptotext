@@ -2,15 +2,22 @@
  * Thin GitHub REST client with rate-limit tracking (FR-1.2, FR-1.3, FR-1.5, FR-1.6).
  * Never logs tokens.
  */
-export const LOW_RATE_LIMIT = 500;
-export const CRITICAL_RATE_LIMIT = 100;
+/** FR-1.5 thresholds are 500 / 100 of an authenticated 5000/h budget; scale them to the actual limit (unauthenticated = 60/h). */
+export const LOW_RATE_FRACTION = 0.1;
+export const CRITICAL_RATE_FRACTION = 0.02;
 
 interface RateState {
   remaining: number | null;
   resetAt: number | null; // epoch ms
+  limit?: number | null;
 }
 
-const rateState: RateState = { remaining: null, resetAt: null };
+const rateState: RateState = { remaining: null, resetAt: null, limit: null };
+
+export function rateThresholds(limit: number | null | undefined): { low: number; critical: number } {
+  const l = limit && limit > 0 ? limit : 5000;
+  return { low: Math.ceil(l * LOW_RATE_FRACTION), critical: Math.ceil(l * CRITICAL_RATE_FRACTION) };
+}
 
 export function getRateState(): RateState {
   return { ...rateState };
@@ -30,14 +37,17 @@ export type ShaLookupMode = "fresh" | "stale_ok" | "blocked";
 export function shaLookupMode(state: RateState, now = Date.now()): ShaLookupMode {
   if (state.remaining == null) return "fresh";
   if (state.resetAt != null && now >= state.resetAt) return "fresh";
-  if (state.remaining < CRITICAL_RATE_LIMIT) return "blocked";
-  if (state.remaining < LOW_RATE_LIMIT) return "stale_ok";
+  const { low, critical } = rateThresholds(state.limit);
+  if (state.remaining < critical) return "blocked";
+  if (state.remaining < low) return "stale_ok";
   return "fresh";
 }
 
 function recordRate(res: Response) {
   const rem = res.headers.get("x-ratelimit-remaining");
   const reset = res.headers.get("x-ratelimit-reset");
+  const limit = res.headers.get("x-ratelimit-limit");
+  if (limit != null && limit !== "") rateState.limit = Number(limit);
   if (rem != null && rem !== "") rateState.remaining = Number(rem);
   if (reset != null && reset !== "") rateState.resetAt = Number(reset) * 1000;
   if ((res.status === 403 || res.status === 429) && rem === "0") {

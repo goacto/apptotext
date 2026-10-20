@@ -1,0 +1,8 @@
+Cache PR 1 follow-up: scale the GitHub rate-limit thresholds to the real limit
+
+Found in live verification of PR #5. Production has no GitHub token, so the API budget is the unauthenticated 60/h.
+The fixed thresholds of 500 and 100 marked every lookup as "blocked" (remaining=59).
+Live result: POST /api/convert returned 503, and the ledger logged phase=github_rate_limit, detail="mode=blocked remaining=59".
+
+Fix: low = 10% and critical = 2% of x-ratelimit-limit. At 5000/h that is exactly the spec's 500 / 100; at 60/h it is 6 / 2.
+Tests: vitest 63/63 (new "scales to the real limit" cases), tsc clean, eslint clean, next build OK.
