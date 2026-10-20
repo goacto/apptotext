@@ -183,6 +183,8 @@ export async function failVersion(admin: SupabaseClient, versionId: string, reas
     const n = Math.max(0, ((prof?.generation_count as number | undefined) ?? 0) - 1);
     await admin.from("profiles").update({ generation_count: n }).eq("id", quotaUser);
     await admin.from("guide_versions").update({ quota_user: null }).eq("id", versionId);
+    // The refunded charge no longer blocks a future charge for the same conversion/level.
+    await admin.from("quota_charges").delete().eq("guide_version_id", versionId).eq("user_id", quotaUser);
   }
 }
 

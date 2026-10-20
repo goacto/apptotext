@@ -24,7 +24,7 @@ import {
   getQuizSystemPrompt,
   getQuizUserPrompt,
 } from "@/lib/ai/prompts";
-import { canGenerate, incrementGenerationCount, PLAN_LIMITS } from "@/lib/subscription";
+import { canGenerate, chargeGenerationOnce, PLAN_LIMITS } from "@/lib/subscription";
 import { rateLimit } from "@/lib/rate-limit";
 
 type GeneratePhase = "chapter" | "flashcards" | "quiz";
@@ -359,23 +359,29 @@ export async function POST(request: NextRequest) {
             const keyConcepts = extractKeyConcepts(fullContent);
             const chapterTitle = extractChapterTitle(fullContent);
 
-            const { data: chapter, error: chapterError } = await supabase
+            // Upsert: a retried/concurrent request replaces the row instead of duplicating it.
+            // Conversion ownership was checked above with the user's client.
+            const { data: chapter, error: chapterError } = await admin
               .from("chapters")
-              .insert({
-                conversion_id: body.conversion_id,
-                level: body.level,
-                chapter_number: chapterNumber,
-                title: chapterTitle,
-                content: fullContent,
-                key_concepts: keyConcepts,
-              })
+              .upsert(
+                {
+                  conversion_id: body.conversion_id,
+                  level: body.level,
+                  chapter_number: chapterNumber,
+                  title: chapterTitle,
+                  content: fullContent,
+                  key_concepts: keyConcepts,
+                },
+                { onConflict: "conversion_id,level,chapter_number" }
+              )
               .select()
               .single();
 
-            if (chapterNumber === 1) {
-              // generation_count is service-role only (PR 0 column lock)
-              await incrementGenerationCount(admin, user.id);
-            }
+            // Charge at most once per (conversion, level), and never twice for the same shared guide.
+            const charged =
+              chapterNumber === 1 && !chapterError
+                ? await chargeGenerationOnce(admin, user.id, body.conversion_id, body.level, versionId)
+                : false;
 
             // FR-4.2: the server writes the same AI output into the shared cache (never copied from user rows, D9).
             if (versionId) {
@@ -393,9 +399,6 @@ export async function POST(request: NextRequest) {
                   { onConflict: "guide_version_id,chapter_number" }
                 );
                 await renewLease(admin, versionId);
-                if (chapterNumber === 1) {
-                  await admin.from("guide_versions").update({ quota_user: user.id }).eq("id", versionId);
-                }
               }
             }
 
@@ -404,7 +407,7 @@ export async function POST(request: NextRequest) {
               phase: `chapter_${chapterNumber}`,
               outcome: chapterError ? "failed" : "generated",
               usage,
-              quota_charged: chapterNumber === 1,
+              quota_charged: charged,
               would_hit: wouldHit,
               detail: chapterError?.message ?? null,
             });

@@ -120,6 +120,31 @@ export async function incrementGenerationCount(
 }
 
 /**
+ * Atomically charge one generation for (conversion, level) unless it was already charged
+ * or the user already paid for the shared guide version. Returns true only if it charged.
+ * Service-role client only (charge_generation_once is not executable by clients).
+ */
+export async function chargeGenerationOnce(
+  admin: SupabaseClient,
+  userId: string,
+  conversionId: string,
+  level: number,
+  versionId: string | null
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("charge_generation_once", {
+    p_user: userId,
+    p_conversion: conversionId,
+    p_level: level,
+    p_version: versionId,
+  });
+  if (error) {
+    console.error("charge_generation_once failed", error.message);
+    return false;
+  }
+  return data === true;
+}
+
+/**
  * Returns the current generation count for a user.
  */
 export async function getGenerationCount(

@@ -1,0 +1,24 @@
+Fix: chapter-1 retry double-charged quota and duplicated chapter rows
+
+Seen on prod 2026-10-20 at 3:15–3:17 PM ET: two chapter-1 requests on the same conversion and level both saved a chapter row
+and both charged quota (generation_count went to 2). Each request passed the 409 check before the other had saved.
+
+Fix:
+- Migration 20261020_quota_charge_once.sql. DB backed up first to /workspace/out/apptotext-db-backup-pre-quota-once.json.
+  - Unique index on chapters (conversion_id, level, chapter_number). There were 0 duplicates before.
+  - quota_charges table, primary key (conversion_id, level). Service-role only: RLS on, all client grants revoked.
+  - charge_generation_once(user, conversion, level, version), SECURITY DEFINER, service_role only. It charges only if
+    1) the user hasn't already paid for the shared guide version (guide_versions.quota_user), and
+    2) the (conversion, level) row inserts. A conflict means no charge.
+    It increments generation_count and sets quota_user in the same transaction.
+- generate route: the chapter row is upserted on (conversion_id, level, chapter_number) with the server client,
+  after ownership is checked with the user's client. The charge goes through chargeGenerationOnce, and the ledger
+  quota_charged field is the real result.
+- guides/open (a free user unlocking a cached level) uses the same atomic charge, so a double-click can't charge twice.
+- failVersion refund also deletes the quota_charges row, so a later regeneration is charged normally.
+
+DB probe on prod (throwaway @example.com user):
+- charge(level 101) = true, again = false, level 201 = true. generation_count = 2, quota_charges = 2.
+- anon and authenticated cannot execute the function; authenticated cannot select quota_charges.
+
+Checks: vitest 81/81 (new src/lib/quota-charge-once.test.ts), tsc clean, eslint (no new findings), next build OK.
