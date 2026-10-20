@@ -2,7 +2,14 @@ import { TextbookLevel } from "../types";
 import { GOACTO_FULL } from "../constants";
 
 /** Bump when prompts change. Cached guides record the version they were built with. */
-export const PROMPT_VERSION = "p1";
+export const PROMPT_VERSION = "p2";
+
+/**
+ * Chapter output cap. At ~75 tok/s from claude-sonnet-4-6 this is ~135s, well inside the 300s function limit.
+ * The prompt targets ~2,000-2,600 words (~4,500-6,500 tokens) so chapters finish well before the cap.
+ */
+export const CHAPTER_MAX_TOKENS = 10_000;
+export const CHAPTER_TARGET_WORDS = "2,000-2,600";
 
 const LEVEL_DESCRIPTIONS: Record<TextbookLevel, string> = {
   101: `BEGINNER (101): Write for someone completely new to this topic. Use simple language, analogies, and step-by-step explanations. Define every technical term when first used. Include "Try it yourself" exercises.`,
@@ -55,6 +62,9 @@ Generate a comprehensive chapter that teaches this material at the ${level} leve
 3. Main content with code examples
 4. Key concepts list (as a JSON array of strings at the very end, wrapped in \`\`\`json blocks labeled KEY_CONCEPTS)
 5. A "Growth Challenge" section encouraging both self-improvement and helping others learn
+
+Length: aim for ${CHAPTER_TARGET_WORDS} words in total, code included. Keep each code example short and focused (under ~30 lines).
+You MUST finish the chapter: always end with the Growth Challenge section followed by the KEY_CONCEPTS json block. If you are running long, shorten the main content rather than cutting off the ending.
 
 Make the content thorough, educational, and aligned with the GOACTO values of growing together.`;
 }
