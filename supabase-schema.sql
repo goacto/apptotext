@@ -333,3 +333,7 @@ drop trigger if exists guard_profile_billing_columns on public.profiles;
 create trigger guard_profile_billing_columns
   before update on public.profiles
   for each row execute function public.guard_profile_billing_columns();
+
+-- increment_xp is server-only (supabase/migrations/20261020_increment_xp_server_only.sql)
+revoke execute on function public.increment_xp(uuid, integer) from public, anon, authenticated;
+grant execute on function public.increment_xp(uuid, integer) to service_role;

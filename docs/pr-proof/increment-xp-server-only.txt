@@ -1,0 +1,13 @@
+increment_xp is now server-only (Zach approved 2026-10-20, 2:32 PM ET)
+
+Before: anon, authenticated and PUBLIC could EXECUTE the SECURITY DEFINER function public.increment_xp(uuid, int).
+Because it takes any user id, anyone holding the anon key could add XP to any user.
+Before-state backup: /workspace/out/apptotext-functions-backup-pre-increment-xp-2026-10-20.json
+Old ACL: {=X/postgres, postgres=X, anon=X, authenticated=X, service_role=X}
+
+Migration applied to uwsvqzartbukejiivvlg as increment_xp_server_only.
+Live checks:
+  has_function_privilege: anon=false, authenticated=false, service_role=true
+  REST with the anon key, POST /rest/v1/rpc/increment_xp -> 401 42501 "permission denied for function increment_xp"
+App impact: none. Nothing in src calls increment_xp; XP is updated through server routes.
+Checks: vitest 31/31 (new: src/lib/increment-xp-lock.test.ts), tsc clean, eslint clean.
