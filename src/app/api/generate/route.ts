@@ -5,6 +5,17 @@ import { AIProvider, TextbookLevel } from "@/lib/types";
 import { callAI, PROVIDER_MODELS, streamAI } from "@/lib/ai/provider";
 import type { TokenUsage } from "@/lib/ai/pricing";
 import { recordLedger } from "@/lib/ledger";
+import { sha256 } from "@/lib/github/source";
+import {
+  claimVersion,
+  failVersion,
+  heldVersion,
+  isCacheEligible,
+  readyVersionForSha,
+  renewLease,
+  tryFinalize,
+  type ConversionRepoFields,
+} from "@/lib/cache/guides";
 import {
   getTextbookSystemPrompt,
   getTextbookUserPrompt,
@@ -201,21 +212,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check generation limits only on chapter 1
-      if (chapterNumber === 1) {
-        const { allowed, plan, limit } = await canGenerate(supabase, user.id);
-        if (!allowed) {
-          const limitMessages: Record<string, string> = {
-            free: `Free tier limit reached (${limit} ${limit === 1 ? "generation" : "generations"}). Upgrade to a paid plan for more generations per month.`,
-            standard: `Monthly generation limit reached (${limit}). Upgrade to Pro for ${PLAN_LIMITS.pro}/month or Master for ${PLAN_LIMITS.master}/month, or wait for your next billing cycle.`,
-            pro: `Monthly generation limit reached (${limit}). Upgrade to Master for ${PLAN_LIMITS.master}/month, or wait for your next billing cycle.`,
-            master: `Monthly generation limit reached (${limit}). Your limit resets at the start of your next billing cycle.`,
-          };
-          const message = limitMessages[plan] ?? limitMessages.free;
-          return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
-        }
+      const admin = createAdminClient();
+      const convFields = conversion as ConversionRepoFields;
+      let eligible = await isCacheEligible(admin, convFields, user.id);
+      let versionId: string | null = null;
 
-        // Check if any chapters already exist for this level
+      if (chapterNumber === 1) {
+        // Check if any chapters already exist for this level (FR-2.5 keeps the 409)
         const { data: existingChapter } = await supabase
           .from("chapters")
           .select("id")
@@ -230,12 +233,74 @@ export async function POST(request: NextRequest) {
             { status: 409 }
           );
         }
+
+        if (eligible) {
+          // FR-2.5: a ready version for this exact commit is served instead of generated.
+          const ready = await readyVersionForSha(admin, convFields.repo_key!, convFields.commit_sha!, body.level);
+          if (ready) return NextResponse.json({ cached: true, version_id: ready });
+          // US-4: someone else is already building it; wait instead of spending quota.
+          const { data: building } = await admin
+            .from("guide_versions")
+            .select("id, lease_owner, lease_expires_at")
+            .eq("repo_key", convFields.repo_key!)
+            .eq("commit_sha", convFields.commit_sha!)
+            .eq("level", body.level)
+            .eq("status", "generating")
+            .maybeSingle();
+          if (
+            building &&
+            building.lease_owner !== user.id &&
+            building.lease_expires_at &&
+            new Date(building.lease_expires_at as string).getTime() > Date.now()
+          ) {
+            return NextResponse.json({ status: "generating", version_id: building.id }, { status: 202 });
+          }
+        }
+      }
+
+      // Check generation limits only on chapter 1
+      if (chapterNumber === 1) {
+        const { allowed, plan, limit } = await canGenerate(supabase, user.id);
+        if (!allowed) {
+          const limitMessages: Record<string, string> = {
+            free: `Free tier limit reached (${limit} ${limit === 1 ? "generation" : "generations"}). Upgrade to a paid plan for more generations per month.`,
+            standard: `Monthly generation limit reached (${limit}). Upgrade to Pro for ${PLAN_LIMITS.pro}/month or Master for ${PLAN_LIMITS.master}/month, or wait for your next billing cycle.`,
+            pro: `Monthly generation limit reached (${limit}). Upgrade to Master for ${PLAN_LIMITS.master}/month, or wait for your next billing cycle.`,
+            master: `Monthly generation limit reached (${limit}). Your limit resets at the start of your next billing cycle.`,
+          };
+          const message = limitMessages[plan] ?? limitMessages.free;
+          return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+        }
+
+        if (eligible) {
+          // FR-4.1: single-flight claim of (repo, sha, level, prompt_version).
+          const claim = await claimVersion(
+            admin,
+            convFields,
+            body.level,
+            user.id,
+            provider,
+            PROVIDER_MODELS[provider],
+            sha256(String(conversion.source_content ?? ""))
+          );
+          if (claim.claimed) {
+            versionId = claim.version_id;
+          } else if (claim.status === "ready") {
+            return NextResponse.json({ cached: true, version_id: claim.version_id });
+          } else if (claim.status === "generating") {
+            return NextResponse.json({ status: "generating", version_id: claim.version_id }, { status: 202 });
+          } else {
+            // withdrawn: never re-shared; build a private guide as today.
+            eligible = false;
+          }
+        }
+      } else if (eligible) {
+        versionId = await heldVersion(admin, convFields, body.level, user.id);
       }
 
       const sourceContent = conversion.source_content as string;
       const title = conversion.title as string;
-      const admin = createAdminClient();
-      const cacheEligible = Boolean(conversion.commit_sha && conversion.repo_key);
+      const cacheEligible = eligible;
       // PR 1 shadow mode: would this level have been a cache hit?
       const wouldHit =
         chapterNumber === 1 && cacheEligible
@@ -248,6 +313,7 @@ export async function POST(request: NextRequest) {
         repo_key: (conversion.repo_key as string | null) ?? null,
         level: body.level,
         cache_eligible: cacheEligible,
+        guide_version_id: versionId,
         ai_provider: provider,
         model: PROVIDER_MODELS[provider],
       };
@@ -283,6 +349,7 @@ export async function POST(request: NextRequest) {
               usage,
               detail: streamError instanceof Error ? streamError.message.slice(0, 300) : "stream error",
             });
+            if (versionId) await failVersion(admin, versionId, `chapter ${chapterNumber} stream error`);
             throw streamError;
           }
           if (done) {
@@ -306,6 +373,28 @@ export async function POST(request: NextRequest) {
             if (chapterNumber === 1) {
               // generation_count is service-role only (PR 0 column lock)
               await incrementGenerationCount(admin, user.id);
+            }
+
+            // FR-4.2: the server writes the same AI output into the shared cache (never copied from user rows, D9).
+            if (versionId) {
+              if (chapterError) {
+                await failVersion(admin, versionId, `chapter ${chapterNumber} store error`);
+              } else {
+                await admin.from("guide_chapters").upsert(
+                  {
+                    guide_version_id: versionId,
+                    chapter_number: chapterNumber,
+                    title: chapterTitle,
+                    content: fullContent,
+                    key_concepts: keyConcepts,
+                  },
+                  { onConflict: "guide_version_id,chapter_number" }
+                );
+                await renewLease(admin, versionId);
+                if (chapterNumber === 1) {
+                  await admin.from("guide_versions").update({ quota_user: user.id }).eq("id", versionId);
+                }
+              }
             }
 
             await recordLedger(admin, {
@@ -369,9 +458,12 @@ export async function POST(request: NextRequest) {
         },
       ]);
 
-      await recordLedger(createAdminClient(), {
+      const fcAdmin = createAdminClient();
+      const fcVersion = await heldVersion(fcAdmin, conversion as ConversionRepoFields, body.level, user.id);
+      await recordLedger(fcAdmin, {
         user_id: user.id,
         conversion_id: conversion.id,
+        guide_version_id: fcVersion,
         repo_key: conversion.repo_key ?? null,
         level: body.level,
         phase: "flashcards",
@@ -396,6 +488,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (parseError) {
         console.error("Failed to parse flashcards:", parseError);
+        if (fcVersion) await failVersion(fcAdmin, fcVersion, "flashcards parse error");
         return NextResponse.json(
           { error: "Failed to parse flashcard data from AI" },
           { status: 500 }
@@ -424,6 +517,16 @@ export async function POST(request: NextRequest) {
           );
         }
         flashcards = insertedFlashcards || [];
+      }
+
+      if (fcVersion) {
+        if (flashcardsData.length) {
+          await fcAdmin.from("guide_flashcards").insert(
+            flashcardsData.map((card) => ({ guide_version_id: fcVersion, ...card }))
+          );
+        }
+        await renewLease(fcAdmin, fcVersion);
+        await tryFinalize(fcAdmin, fcVersion);
       }
 
       return NextResponse.json({ flashcards });
@@ -455,9 +558,12 @@ export async function POST(request: NextRequest) {
         },
       ]);
 
-      await recordLedger(createAdminClient(), {
+      const qAdmin = createAdminClient();
+      const qVersion = await heldVersion(qAdmin, conversion as ConversionRepoFields, body.level, user.id);
+      await recordLedger(qAdmin, {
         user_id: user.id,
         conversion_id: conversion.id,
+        guide_version_id: qVersion,
         repo_key: conversion.repo_key ?? null,
         level: body.level,
         phase: "quiz",
@@ -489,6 +595,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (parseError) {
         console.error("Failed to parse quiz:", parseError);
+        if (qVersion) await failVersion(qAdmin, qVersion, "quiz parse error");
         return NextResponse.json(
           { error: "Failed to parse quiz data from AI" },
           { status: 500 }
@@ -518,6 +625,16 @@ export async function POST(request: NextRequest) {
           );
         }
         quizQuestions = insertedQuestions || [];
+      }
+
+      if (qVersion) {
+        if (quizData.length) {
+          await qAdmin.from("guide_quiz_questions").insert(
+            quizData.map((q) => ({ guide_version_id: qVersion, ...q }))
+          );
+        }
+        await renewLease(qAdmin, qVersion);
+        await tryFinalize(qAdmin, qVersion);
       }
 
       return NextResponse.json({ quiz_questions: quizQuestions });

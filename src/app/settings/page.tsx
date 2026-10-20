@@ -17,6 +17,7 @@ import { AI_PROVIDERS } from "@/lib/constants";
 import type { AIProvider } from "@/lib/types";
 import { AuthGuard, useAuth } from "@/components/auth/auth-guard";
 import { UsageToggle } from "@/components/usage/usage-toggle";
+import { GuidesPrivateToggle } from "@/components/usage/guides-private-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -456,6 +457,7 @@ function SettingsContent() {
           <Separator />
 
           <UsageToggle />
+          <GuidesPrivateToggle />
 
           <Separator />
 

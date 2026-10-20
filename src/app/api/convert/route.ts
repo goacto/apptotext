@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { GitHubRateLimitError } from "@/lib/github/api";
 import { getHeadSha, RepoNotFoundError, RepoNotPublicError, resolveRepo } from "@/lib/github/repos";
 import { fetchPinnedSource } from "@/lib/github/source";
+import { lookupCache } from "@/lib/cache/guides";
 
 export const maxDuration = 60;
 
@@ -272,7 +273,11 @@ export async function POST(request: NextRequest) {
         .eq("id", user.id);
     }
 
-    return NextResponse.json(conversion, { status: 201 });
+    // FR-2.1: tell the UI which levels are instant.
+    const cache = repoFields
+      ? await lookupCache(createAdminClient(), repoFields.repo_key, repoFields.commit_sha).catch(() => ({}))
+      : {};
+    return NextResponse.json({ ...conversion, cache }, { status: 201 });
   } catch (error) {
     console.error("Conversion error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";

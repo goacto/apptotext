@@ -42,6 +42,13 @@ export default function TermsPage() {
           In the spirit of {GOACTO_SHORT}, treat all community members with
           respect. Shared conversions should be educational and constructive.
         </p>
+
+        <h2 className="text-lg font-semibold text-foreground">Saved Guides</h2>
+        <p>
+          Guides generated from public GitHub repositories are saved and may be
+          reused for other people, without naming who generated them, unless
+          you turn on &quot;Keep my guides private&quot; in Settings.
+        </p>
       </div>
     </div>
   );
