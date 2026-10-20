@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { AIProvider } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
 import { rateLimit } from "@/lib/rate-limit";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { GitHubRateLimitError } from "@/lib/github/api";
+import { getHeadSha, RepoNotFoundError, RepoNotPublicError, resolveRepo } from "@/lib/github/repos";
+import { fetchPinnedSource } from "@/lib/github/source";
 
 export const maxDuration = 60;
 
@@ -18,176 +22,6 @@ function isGitHubUrl(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
-  try {
-    const parsed = new URL(url);
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    if (parts.length >= 2) {
-      return { owner: parts[0], repo: parts[1] };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchGitHubContent(url: string): Promise<{
-  title: string;
-  description: string;
-  content: string;
-}> {
-  const parsed = parseGitHubUrl(url);
-  if (!parsed) {
-    throw new Error("Invalid GitHub URL");
-  }
-
-  const { owner, repo } = parsed;
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github.v3+json",
-    "User-Agent": "AppToText",
-  };
-
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  }
-
-  const repoResponse = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}`,
-    { headers }
-  );
-
-  if (!repoResponse.ok) {
-    throw new Error(`Failed to fetch GitHub repository: ${repoResponse.statusText}`);
-  }
-
-  const repoData = await repoResponse.json();
-  const title = repoData.full_name || `${owner}/${repo}`;
-  const description = repoData.description || "No description available";
-
-  const contentParts: string[] = [];
-  contentParts.push(`# ${title}\n`);
-  contentParts.push(`${description}\n`);
-  contentParts.push(`Language: ${repoData.language || "Unknown"}`);
-  contentParts.push(`Stars: ${repoData.stargazers_count}`);
-  contentParts.push(`Forks: ${repoData.forks_count}\n`);
-
-  // Fetch README
-  try {
-    const readmeResponse = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/readme`,
-      { headers }
-    );
-    if (readmeResponse.ok) {
-      const readmeData = await readmeResponse.json();
-      const readmeContent = Buffer.from(readmeData.content, "base64").toString("utf-8");
-      contentParts.push("## README\n");
-      contentParts.push(readmeContent);
-      contentParts.push("");
-    }
-  } catch {
-    // README not available, continue
-  }
-
-  // Fetch file tree (top level + src directory)
-  try {
-    const treeResponse = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
-      { headers }
-    );
-    if (treeResponse.ok) {
-      const treeData = await treeResponse.json();
-      const files = (treeData.tree || [])
-        .filter((item: { type: string }) => item.type === "blob")
-        .map((item: { path: string }) => item.path);
-
-      contentParts.push("## File Structure\n");
-      contentParts.push("```");
-      files.slice(0, 200).forEach((file: string) => {
-        contentParts.push(file);
-      });
-      if (files.length > 200) {
-        contentParts.push(`... and ${files.length - 200} more files`);
-      }
-      contentParts.push("```\n");
-    }
-  } catch {
-    // Tree not available, continue
-  }
-
-  // Fetch package.json if it exists
-  try {
-    const pkgResponse = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/package.json`,
-      { headers }
-    );
-    if (pkgResponse.ok) {
-      const pkgData = await pkgResponse.json();
-      const pkgContent = Buffer.from(pkgData.content, "base64").toString("utf-8");
-      contentParts.push("## package.json\n");
-      contentParts.push("```json");
-      contentParts.push(pkgContent);
-      contentParts.push("```\n");
-    }
-  } catch {
-    // package.json not available
-  }
-
-  // Fetch key source files (index/main entry points)
-  const keyFiles = [
-    "src/index.ts",
-    "src/index.js",
-    "src/main.ts",
-    "src/main.js",
-    "src/app.ts",
-    "src/app.js",
-    "index.ts",
-    "index.js",
-    "main.ts",
-    "main.js",
-    "app.ts",
-    "app.js",
-    "src/lib/index.ts",
-    "src/lib/main.ts",
-    "lib/index.ts",
-    "lib/main.ts",
-  ];
-
-  const fileResults = await Promise.all(
-    keyFiles.map(async (filePath) => {
-      try {
-        const fileResponse = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
-          { headers }
-        );
-        if (fileResponse.ok) {
-          const fileData = await fileResponse.json();
-          if (fileData.size && fileData.size < 50000) {
-            const fileContent = Buffer.from(fileData.content, "base64").toString("utf-8");
-            const extension = filePath.split(".").pop() || "text";
-            return { filePath, extension, fileContent };
-          }
-        }
-      } catch {
-        // File not available
-      }
-      return null;
-    })
-  );
-
-  for (const result of fileResults.filter(Boolean).slice(0, 3)) {
-    contentParts.push(`## ${result!.filePath}\n`);
-    contentParts.push(`\`\`\`${result!.extension}`);
-    contentParts.push(result!.fileContent);
-    contentParts.push("```\n");
-  }
-
-  return {
-    title,
-    description,
-    content: contentParts.join("\n"),
-  };
 }
 
 async function fetchWebsiteContent(url: string): Promise<{
@@ -362,15 +196,44 @@ export async function POST(request: NextRequest) {
     const sourceType = isGitHubUrl(body.url) ? "github" : "website";
 
     let fetchedContent: { title: string; description: string; content: string };
+    let repoFields: { repo_key: string; github_repo_id: number; commit_sha: string } | null = null;
 
     if (sourceType === "github") {
-      fetchedContent = await fetchGitHubContent(body.url);
+      // FR-1.x: normalize, resolve (public-only, G4), pin to the default-branch HEAD SHA.
+      const admin = createAdminClient();
+      try {
+        const resolved = await resolveRepo(admin, body.url);
+        if (!resolved.isPublic) throw new RepoNotPublicError();
+        const head = await getHeadSha(admin, resolved.meta, { userId: user.id });
+        const pinned = await fetchPinnedSource(resolved.meta, head.sha);
+        await admin
+          .from("repos")
+          .update({ has_readme: pinned.hasReadme })
+          .eq("github_repo_id", resolved.meta.github_repo_id);
+        fetchedContent = pinned;
+        repoFields = {
+          repo_key: resolved.meta.repo_key,
+          github_repo_id: resolved.meta.github_repo_id,
+          commit_sha: head.sha,
+        };
+      } catch (e) {
+        if (e instanceof RepoNotFoundError) {
+          return NextResponse.json({ error: e.message }, { status: 404 });
+        }
+        if (e instanceof RepoNotPublicError) {
+          return NextResponse.json({ error: e.message }, { status: 403 });
+        }
+        if (e instanceof GitHubRateLimitError) {
+          return NextResponse.json({ error: e.message }, { status: 503 });
+        }
+        throw e;
+      }
     } else {
       fetchedContent = await fetchWebsiteContent(body.url);
     }
 
-    // Create conversion record in Supabase
-    const { data: conversion, error: insertError } = await supabase
+    // Create conversion record. Repo identity columns are server-only (PR 1 grants), so insert with the service role.
+    const { data: conversion, error: insertError } = await createAdminClient()
       .from("conversions")
       .insert({
         user_id: user.id,
@@ -380,6 +243,7 @@ export async function POST(request: NextRequest) {
         title: fetchedContent.title,
         description: fetchedContent.description,
         ai_provider: body.ai_provider,
+        ...(repoFields ?? {}),
       })
       .select()
       .single();
