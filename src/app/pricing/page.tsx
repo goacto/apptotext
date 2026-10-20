@@ -45,9 +45,9 @@ const tiers: TierConfig[] = [
     icon: <Zap className="size-5 text-muted-foreground" />,
     price: "$0",
     priceSuffix: " forever",
-    description: "Try AppToText with a limited number of generations",
+    description: "Try AppToText with one full generation",
     popular: false,
-    generations: "3 lifetime",
+    generations: "1 lifetime",
     features: [
       { label: "AI-powered textbook generation", included: true },
       { label: "Interactive flashcards & quizzes", included: true },
@@ -66,7 +66,7 @@ const tiers: TierConfig[] = [
     priceSuffix: " /month",
     description: "For learners who want more power",
     popular: false,
-    generations: "10 / month",
+    generations: "3 / month",
     features: [
       { label: "AI-powered textbook generation", included: true },
       { label: "Interactive flashcards & quizzes", included: true },
@@ -85,7 +85,7 @@ const tiers: TierConfig[] = [
     priceSuffix: " /month",
     description: "For serious learners who want the best",
     popular: true,
-    generations: "25 / month",
+    generations: "6 / month",
     features: [
       { label: "AI-powered textbook generation", included: true },
       { label: "Interactive flashcards & quizzes", included: true },
@@ -104,7 +104,7 @@ const tiers: TierConfig[] = [
     priceSuffix: " /month",
     description: "Maximum power for teams and power users",
     popular: false,
-    generations: "50 / month",
+    generations: "10 / month",
     features: [
       { label: "AI-powered textbook generation", included: true },
       { label: "Interactive flashcards & quizzes", included: true },
@@ -447,7 +447,7 @@ export default function PricingPage() {
                   <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                   <span>
                     <strong>{tier.generations}</strong>{" "}
-                    {tier.id === "free" ? "generations" : "generations (resets monthly)"}
+                    {tier.id === "free" ? (tier.generations.startsWith("1 ") ? "generation" : "generations") : "generations (resets monthly)"}
                   </span>
                 </li>
                 {tier.features.map((feature) => (
@@ -493,16 +493,16 @@ export default function PricingPage() {
               <tr className="border-b">
                 <td className="px-4 py-3">Generations</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">
-                  3 lifetime
+                  1 lifetime
+                </td>
+                <td className="px-4 py-3 text-center font-medium">
+                  3 / month
+                </td>
+                <td className="px-4 py-3 text-center font-medium">
+                  6 / month
                 </td>
                 <td className="px-4 py-3 text-center font-medium">
                   10 / month
-                </td>
-                <td className="px-4 py-3 text-center font-medium">
-                  25 / month
-                </td>
-                <td className="px-4 py-3 text-center font-medium">
-                  50 / month
                 </td>
               </tr>
               {comparisonFeatures.map((feature) => (

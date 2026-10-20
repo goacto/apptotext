@@ -1,0 +1,8 @@
+AppToText plan limits, Option A (Zach approved 2026-10-20 2:12 PM ET). Prices unchanged; no Stripe prices/products touched.
+Old -> new: Free 3 lifetime -> 1 lifetime; Standard 10/mo -> 3/mo; Pro 25/mo -> 6/mo; Master 50/mo -> 10/mo.
+Grandfathering: profiles.generation_limit_override + grandfathered_plan. Override applies only while on the same plan; cleared by webhook on cancel/downgrade.
+Migration supabase/migrations/20261020_plan_limits_option_a.sql applied to uwsvqzartbukejiivvlg after backing up profiles (1 row) to /workspace/out on the ops box.
+Result: 1 paid profile grandfathered (standard -> override 10). Free users with remaining generations: 0 (no free profiles exist).
+Note: that profile's Stripe customer/subscription exists only in test mode; there are 0 live paying AppToText subscribers.
+Checks: vitest 25/25 (new src/lib/subscription.test.ts, 7 tests), tsc clean, eslint clean on touched files, next build compiles.
+Checkout line-item descriptions updated to the new monthly counts (amounts unchanged).
