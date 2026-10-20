@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
   // 1. Purge
   const { data: purged } = await admin.rpc("purge_withdrawn_versions");
   result.purged = Number(purged ?? 0);
+  const { data: pruned } = await admin.rpc("prune_rate_limits");
+  result.rate_limit_rows_pruned = Number(pruned ?? 0);
 
   // 2. Visibility re-check: repos with a ready or generating version, least recently checked first.
   const { data: live } = await admin

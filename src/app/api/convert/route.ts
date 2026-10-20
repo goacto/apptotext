@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { AIProvider } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
-import { rateLimit } from "@/lib/rate-limit";
+import { durableRateLimit } from "@/lib/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GitHubRateLimitError } from "@/lib/github/api";
 import { getHeadSha, RepoNotFoundError, RepoNotPublicError, resolveRepo } from "@/lib/github/repos";
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { allowed } = rateLimit(`convert:${user.id}`, 10);
+    const allowed = await durableRateLimit(createAdminClient(), `convert:${user.id}`, 10);
     if (!allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment." },

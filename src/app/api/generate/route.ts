@@ -27,7 +27,13 @@ import {
   getQuizUserPrompt,
 } from "@/lib/ai/prompts";
 import { canGenerate, chargeGenerationOnce, PLAN_LIMITS } from "@/lib/subscription";
-import { rateLimit } from "@/lib/rate-limit";
+import {
+  aiCapReached,
+  CAPACITY_MESSAGE,
+  durableRateLimit,
+  regenerateBlocked,
+  REGENERATE_COOLDOWN_MESSAGE,
+} from "@/lib/limits";
 
 type GeneratePhase = "chapter" | "flashcards" | "quiz";
 
@@ -138,11 +144,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { allowed, remaining } = rateLimit(`generate:${user.id}`, 20);
-    if (!allowed) {
+    if (!(await durableRateLimit(createAdminClient(), `generate:${user.id}`, 20))) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment." },
-        { status: 429, headers: { "X-RateLimit-Remaining": String(remaining) } }
+        { status: 429, headers: { "X-RateLimit-Remaining": "0" } }
       );
     }
 
@@ -262,6 +267,45 @@ export async function POST(request: NextRequest) {
           };
           const message = limitMessages[plan] ?? limitMessages.free;
           return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+        }
+
+        // FR-8.3: daily AI spend cap. Cache hits returned above are never blocked.
+        const cap = await aiCapReached(admin);
+        if (cap.reached) {
+          await recordLedger(admin, {
+            user_id: user.id,
+            conversion_id: conversion.id as string,
+            repo_key: (conversion.repo_key as string | null) ?? null,
+            level: body.level,
+            phase: "chapter_1",
+            outcome: "refused",
+            cache_eligible: eligible,
+            detail: "daily_cap",
+          });
+          return NextResponse.json({ error: CAPACITY_MESSAGE, capacity: true }, { status: 503 });
+        }
+
+        // FR-8.2: one Regenerate per (repo, level) per 6 hours across all users.
+        if (eligible) {
+          const { data: priorVersions } = await admin
+            .from("guide_versions")
+            .select("commit_sha, status, created_at")
+            .eq("repo_key", convFields.repo_key!)
+            .eq("level", body.level)
+            .in("status", ["generating", "ready"]);
+          if (regenerateBlocked(priorVersions ?? [], convFields.commit_sha!)) {
+            await recordLedger(admin, {
+              user_id: user.id,
+              conversion_id: conversion.id as string,
+              repo_key: convFields.repo_key ?? null,
+              level: body.level,
+              phase: "chapter_1",
+              outcome: "refused",
+              cache_eligible: true,
+              detail: "regenerate_cooldown",
+            });
+            return NextResponse.json({ error: REGENERATE_COOLDOWN_MESSAGE, cooldown: true }, { status: 429 });
+          }
         }
 
         if (eligible) {
