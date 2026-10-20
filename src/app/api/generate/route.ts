@@ -7,6 +7,7 @@ import { extractKeyConcepts } from "@/lib/ai/key-concepts";
 import type { TokenUsage } from "@/lib/ai/pricing";
 import { estimateTokens, finishLedger, progressLedger, recordLedger, startLedger } from "@/lib/ledger";
 import { sha256 } from "@/lib/github/source";
+import { computeListing } from "@/lib/library/listing";
 import {
   claimVersion,
   failVersion,
@@ -618,7 +619,7 @@ export async function POST(request: NextRequest) {
           );
         }
         await renewLease(fcAdmin, fcVersion);
-        await tryFinalize(fcAdmin, fcVersion);
+        if (await tryFinalize(fcAdmin, fcVersion)) await computeListing(fcAdmin, fcVersion);
       }
 
       return NextResponse.json({ flashcards });
@@ -726,7 +727,7 @@ export async function POST(request: NextRequest) {
           );
         }
         await renewLease(qAdmin, qVersion);
-        await tryFinalize(qAdmin, qVersion);
+        if (await tryFinalize(qAdmin, qVersion)) await computeListing(qAdmin, qVersion);
       }
 
       return NextResponse.json({ quiz_questions: quizQuestions });
