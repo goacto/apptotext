@@ -37,7 +37,9 @@ interface GenerateRequestBody {
   chapter_number?: number;
 }
 
-export const maxDuration = 60;
+// Hobby + Fluid compute allows up to 300s. A full Sonnet 4.6 chapter (max_tokens 8192) takes ~1.5–2 min,
+// so 60s killed every chapter mid-stream (no done event, no ledger row, no saved chapter).
+export const maxDuration = 300;
 
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
 

@@ -4,7 +4,9 @@ import { AIProvider } from "@/lib/types";
 import { streamAI } from "@/lib/ai/provider";
 import { rateLimit } from "@/lib/rate-limit";
 
-export const maxDuration = 60;
+// Hobby + Fluid compute allows up to 300s. A full Sonnet 4.6 chapter (max_tokens 8192) takes ~1.5–2 min,
+// so 60s killed every chapter mid-stream (no done event, no ledger row, no saved chapter).
+export const maxDuration = 300;
 
 interface ChatRequestBody {
   conversion_id: string;
