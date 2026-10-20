@@ -1,0 +1,6 @@
+AppToText GOACTO usage ping (REQ v0.3.1 §4.6), 2026-10-20 ET
+- src/lib/goactoPing.ts: same file as ScriptLabOS #4, app "apptotext" added to GoactoApp.
+- Layout mounts <UsagePing/>: one ping per local day to https://siagentspace.com/api/ping, body {v,app,day,aid,first}, credentials omit. Skips on opt-out or GPC.
+- Settings > Privacy: "Share anonymous usage count" switch (default On; Off stores goacto:usage-optout:v1).
+- vitest: 3 files, 18 tests pass (incl. src/lib/goactoPing.test.ts). tsc clean. eslint clean on touched files. next build compiles; local prerender needs Supabase env (pre-existing, unrelated).
+- Depends on goacto/botboard PR adding apptotext to APPS/PROD_ORIGINS and the DB migration; until then the ping endpoint rejects it (no user impact; ping never throws).
