@@ -2,30 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
+import { PAID_PLANS, safeReturnPath, withQuery, type PaidPlan } from "@/lib/plans";
 
 export const maxDuration = 30;
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://apptotext.com";
 
-type PlanTier = "standard" | "pro" | "master";
+type PlanTier = PaidPlan;
 
-const PLAN_CONFIG: Record<PlanTier, { price: number; name: string; description: string }> = {
-  standard: {
-    price: 499,
-    name: "AppToText Standard",
-    description: "3 generations per month, all AI providers",
-  },
-  pro: {
-    price: 999,
-    name: "AppToText Pro",
-    description: "6 generations per month, all AI providers, priority support",
-  },
-  master: {
-    price: 1499,
-    name: "AppToText Master",
-    description: "10 generations per month, all AI providers, priority support, early access",
-  },
-};
+const PLAN_CONFIG: Record<PlanTier, { price: number; name: string; description: string }> = Object.fromEntries(
+  PAID_PLANS.map((p) => [
+    p.id,
+    { price: p.priceCents, name: `AppToText ${p.name}`, description: `${p.limit} generations per month, ${p.description}` },
+  ])
+) as Record<PlanTier, { price: number; name: string; description: string }>;
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,11 +35,16 @@ export async function POST(request: NextRequest) {
 
     // Parse plan from request body
     let plan: PlanTier = "pro";
+    // Upgrade card (FR-3.2): return to the same guide and tag the session for metrics.
+    let returnTo: string | null = null;
+    let source: "guide_preview" | null = null;
     try {
       const body = await request.json();
       if (body.plan && body.plan in PLAN_CONFIG) {
         plan = body.plan as PlanTier;
       }
+      returnTo = safeReturnPath(body.return_to);
+      if (body.source === "guide_preview") source = "guide_preview";
     } catch {
       // Default to pro if no body or invalid JSON
     }
@@ -97,9 +92,9 @@ export async function POST(request: NextRequest) {
           quantity: 1,
         },
       ],
-      metadata: { user_id: user.id, plan },
-      success_url: `${APP_URL}/dashboard?upgraded=true`,
-      cancel_url: `${APP_URL}/pricing`,
+      metadata: { user_id: user.id, plan, ...(source ? { source } : {}) },
+      success_url: returnTo ? `${APP_URL}${withQuery(returnTo, "upgraded", "1")}` : `${APP_URL}/dashboard?upgraded=true`,
+      cancel_url: returnTo ? `${APP_URL}${returnTo}` : `${APP_URL}/pricing`,
     });
 
     return NextResponse.json({ url: session.url });

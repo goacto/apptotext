@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Mail, Loader2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
+import { safeReturnPath } from "@/lib/plans";
 import { APP_NAME, GOACTO_SHORT, GOACTO_FULL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,12 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
+/** US-3: return a signed-out visitor to the guide they were previewing. */
+function nextPath(): string | null {
+  if (typeof window === "undefined") return null;
+  return safeReturnPath(new URLSearchParams(window.location.search).get("next"));
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -66,7 +73,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push(nextPath() ?? "/dashboard");
       router.refresh();
     } catch {
       setError("An unexpected error occurred. Please try again.");
@@ -83,7 +90,9 @@ export default function LoginPage() {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback${
+            nextPath() ? `?next=${encodeURIComponent(nextPath()!)}` : ""
+          }`,
         },
       });
 

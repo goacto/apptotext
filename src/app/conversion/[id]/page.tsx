@@ -25,6 +25,8 @@ import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TutorChat } from "@/components/tutor-chat";
+import { GuidePreview } from "@/components/guides/guide-preview";
+import type { GuidePreview as GuidePreviewData } from "@/lib/cache/preview";
 import { TEXTBOOK_LEVELS, AI_PROVIDERS } from "@/lib/constants";
 import { exportToMarkdown, downloadMarkdown, exportToPDF } from "@/lib/export";
 import type {
@@ -60,6 +62,11 @@ function builtAgo(iso: string): string {
 
 function ConversionViewerContent() {
   const params = useParams();
+  // FR-3.3: checkout returns here with ?upgraded=1.
+  const [upgraded, setUpgraded] = useState(false);
+  useEffect(() => {
+    setUpgraded(new URLSearchParams(window.location.search).get("upgraded") === "1");
+  }, []);
   const router = useRouter();
   const supabase = createClient();
 
@@ -95,6 +102,8 @@ function ConversionViewerContent() {
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [bookmarkedChapters, setBookmarkedChapters] = useState<Set<string>>(new Set());
   const [cacheMap, setCacheMap] = useState<Record<number, CachedLevel>>({});
+  // US-3: preview + upgrade card when a Free user has no generation left for a cached level.
+  const [previews, setPreviews] = useState<Record<number, GuidePreviewData>>({});
 
   // Load bookmarks from localStorage
   useEffect(() => {
@@ -358,8 +367,21 @@ function ConversionViewerContent() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        if (res.status === 403 && data?.upgrade_required && data?.preview_available) {
+          const pr = await fetch(`/api/guides/${versionId}/preview`);
+          if (pr.ok) {
+            const preview = (await pr.json()) as GuidePreviewData;
+            setPreviews((m) => ({ ...m, [activeLevel]: preview }));
+            return;
+          }
+        }
         throw new Error(data?.error || `Could not open the saved guide (${res.status})`);
       }
+      setPreviews((m) => {
+        const next = { ...m };
+        delete next[activeLevel];
+        return next;
+      });
       await fetchChapters();
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Could not open the saved guide.");
@@ -683,6 +705,11 @@ function ConversionViewerContent() {
                               {generateError}
                             </p>
                           )}
+                        {upgraded && cacheMap[level.level] && (
+                          <p className="mb-4 text-sm font-medium text-primary">
+                            Thanks for upgrading! Open the full guide below.
+                          </p>
+                        )}
                         {cacheMap[level.level] && (
                           <div className="mb-4 flex flex-col items-center gap-2">
                             <p className="text-sm text-muted-foreground">
@@ -721,6 +748,15 @@ function ConversionViewerContent() {
                             </>
                           )}
                         </Button>
+                        )}
+                        {previews[level.level] && (
+                          <div className="mt-6 w-full text-left">
+                            <GuidePreview
+                              preview={previews[level.level]}
+                              returnTo={`/conversion/${conversion!.id}`}
+                              signedIn
+                            />
+                          </div>
                         )}
                         </>
                         )}
