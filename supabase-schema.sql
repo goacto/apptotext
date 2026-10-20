@@ -129,14 +129,14 @@ alter table public.quiz_sessions enable row level security;
 -- ============================================================
 
 -- Profiles
-create policy "Public profiles are viewable by everyone"
-  on public.profiles for select using (true);
+-- Owner-readable only; billing columns locked (column grants + guard trigger).
+-- Full definitions incl. public_profiles view: supabase/migrations/20261020_lock_profile_billing.sql
+create policy "Users can view own profile"
+  on public.profiles for select to authenticated using (auth.uid() = id);
 
 create policy "Users can update own profile"
-  on public.profiles for update using (auth.uid() = id);
-
-create policy "Users can insert own profile"
-  on public.profiles for insert with check (auth.uid() = id);
+  on public.profiles for update to authenticated
+  using (auth.uid() = id) with check (auth.uid() = id);
 
 -- Badges
 create policy "Badges are viewable by everyone"
@@ -282,3 +282,54 @@ create index if not exists idx_flashcard_progress_user_id on public.flashcard_pr
 create index if not exists idx_flashcard_progress_next_review on public.flashcard_progress(next_review);
 create index if not exists idx_quiz_sessions_user_id on public.quiz_sessions(user_id);
 create index if not exists idx_profiles_total_xp on public.profiles(total_xp desc);
+
+-- ============================================================
+-- PROFILE BILLING LOCK (same as supabase/migrations/20261020_lock_profile_billing.sql)
+-- ============================================================
+revoke select on public.profiles from anon;
+
+create or replace view public.public_profiles
+  with (security_invoker = false) as
+  select id, display_name, avatar_url, total_xp, current_streak, longest_streak
+  from public.profiles;
+revoke all on public.public_profiles from anon, authenticated;
+grant select on public.public_profiles to anon, authenticated;
+
+-- G1: clients may update only non-billing columns of their own row.
+revoke insert, update, delete, truncate, references, trigger on public.profiles from anon, authenticated;
+grant update (display_name, avatar_url, preferred_ai_provider, total_xp, current_streak, longest_streak, last_activity)
+  on public.profiles to authenticated;
+
+drop policy if exists "Users can update own profile" on public.profiles;
+create policy "Users can update own profile"
+  on public.profiles for update to authenticated
+  using (auth.uid() = id) with check (auth.uid() = id);
+
+-- Profiles are created only by the SECURITY DEFINER handle_new_user trigger.
+drop policy if exists "Users can insert own profile" on public.profiles;
+
+-- Belt and braces: even if a grant is added back later, client roles cannot change billing/identity columns.
+create or replace function public.guard_profile_billing_columns()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if current_user in ('anon', 'authenticated') and (
+       new.id is distinct from old.id
+    or new.email is distinct from old.email
+    or new.subscription_status is distinct from old.subscription_status
+    or new.generation_count is distinct from old.generation_count
+    or new.generation_reset_at is distinct from old.generation_reset_at
+    or new.generation_limit_override is distinct from old.generation_limit_override
+    or new.grandfathered_plan is distinct from old.grandfathered_plan
+    or new.stripe_customer_id is distinct from old.stripe_customer_id
+    or new.stripe_subscription_id is distinct from old.stripe_subscription_id
+    or new.created_at is distinct from old.created_at
+  ) then
+    raise exception 'profile billing columns are read-only for clients' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists guard_profile_billing_columns on public.profiles;
+create trigger guard_profile_billing_columns
+  before update on public.profiles
+  for each row execute function public.guard_profile_billing_columns();
