@@ -25,7 +25,7 @@ export const UPGRADE_HEADLINE = `Unlock the full guide, flashcards and quiz. Pla
  */
 export function safeReturnPath(path: unknown): string | null {
   if (typeof path !== "string" || path.length > 200) return null;
-  if (!/^\/(conversion|library)\/[A-Za-z0-9._\-/]+$/.test(path)) return null;
+  if (!/^\/(conversion|library)\/[A-Za-z0-9._\-/]+(\?[A-Za-z0-9._\-=&%]*)?$/.test(path)) return null;
   if (path.includes("//") || path.includes("..")) return null;
   return path;
 }

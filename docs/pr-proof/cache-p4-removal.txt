@@ -1,0 +1,40 @@
+PR 4: removal requests and do-not-cache (US-6, US-8, FR-5.4 to 5.6, FR-7.1 to 7.5)
+
+Migration 20261020_cache_p4_removal.sql. DB backed up first to /workspace/out/apptotext-db-backup-pre-p4.json.
+- Three new tables, all service-role only (RLS on, client grants revoked):
+  - removal_requests, with a jsonb events audit
+  - do_not_cache, keyed by github_repo_id (survives renames), plus repo_key and an optional owner wildcard
+  - cron_runs
+- New functions:
+  - is_do_not_cache()
+  - withdraw_repo(): withdraws every version, purges guide_* content immediately, keeps the guide_versions row as
+    the tombstone (purged_at), and forces Share off on users' copies (FR-5.6)
+  - purge_withdrawn_versions()
+- A trigger on conversions blocks turning Share on for private or do-not-cache repos.
+- The "Keep my guides private" trigger now also purges shared content immediately (previously withdraw only).
+
+App
+- Removal form at /library/remove: noindex; repo, type (remove / remove + never cache / report), email, reason, honeypot.
+  - Limited to 5 requests per IP per day, counted in the DB (keyed HMAC of the IP), so the limit survives cold starts.
+  - Creates a removal request and sends the acknowledgement email with the exact FR-7.1 copy.
+- POST /api/library/remove/verify ("Verify now"):
+  - (a) Signed in with GitHub as the repo owner.
+  - (b) Topic apptotext-optout, or a .apptotext-optout file containing the token on the default branch.
+  - On success the takedown runs at once: withdraw + purge, add to do-not-cache if "never cache again", send the
+    confirmation email, close the request. Every step goes to the events audit.
+  - (c) Manual review: requests stay pending for /admin/cache (PR 6).
+- Cache eligibility now also checks do-not-cache, failing closed. Users can still build private guides of an
+  opted-out repo (Q5).
+- Daily job: vercel.json crons "0 8 * * *" (Hobby, once a day) calls /api/cron/daily, which does three things:
+  1) a purge safety net;
+  2) a visibility re-check of repos with live guides within the GitHub budget. private:true withdraws now. A 404 is a
+     strike: the first unlists, and a second at least 1h later withdraws;
+  3) a repo-proof check of pending requests up to 7 days old. This replaces the spec's "every 10 minutes"
+     with daily checks plus the user-triggered "Verify now".
+  - It is idempotent and runs at most once every 20h (cron_runs). If CRON_SECRET is set, a Bearer token is required.
+- Every lookup re-reads visibility: resolveRepo withdraws at once if GitHub says the repo is private.
+- Email: src/lib/email has a provider interface. Resend is used only when RESEND_API_KEY and EMAIL_FROM are set and
+  VERCEL_ENV=production. Otherwise it only logs (masked recipient, subject, template; never the body).
+  @example.com and other reserved domains always log only, whatever the config.
+
+Checks: vitest 119/119 (new src/lib/cache/removal.test.ts), tsc clean, no new eslint findings, next build OK.
