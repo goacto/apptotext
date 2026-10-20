@@ -1,0 +1,10 @@
+Fix: key concepts were empty on every claude-sonnet-4-6 chapter
+
+Found during the PR #11 verification (2026-10-20, about 3:38 PM ET): all 3 chapters ended with a valid KEY_CONCEPTS block, but
+chapters.key_concepts was [] for each one. The old regex only matched "KEY_CONCEPTS\n```json\n[...]".
+Sonnet 4.6 writes "```json\nKEY_CONCEPTS\n[...]" (ch1, ch2) or "```json KEY_CONCEPTS\n[...]" (ch3).
+
+Fix: src/lib/ai/key-concepts.ts finds the last KEY_CONCEPTS label, then parses the JSON array that follows it, up to the
+closing fence. All three formats are covered by src/lib/ai/key-concepts.test.ts.
+Prod check: run against the 3 real chapters of the verification guide (version 93a82fe3), it extracted more than 3 concepts each (test passed).
+Checks: vitest 101/101, tsc, eslint, next build OK.
