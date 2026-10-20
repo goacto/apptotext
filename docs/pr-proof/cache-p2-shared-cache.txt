@@ -1,0 +1,43 @@
+Saved-Guide Cache REQ v0.1, PR 2: shared cache + single-flight (subscribers)
+Zach approved on 2026-10-20 at 2:32 PM ET. Q1: shared by default. Q3: Free users can spend their 1 generation to unlock a cached level. Q4: AI provider is not part of the key.
+
+What ships
+- guide_versions, guide_chapters, guide_flashcards, guide_quiz_questions: service role only (RLS on, no policies, client grants revoked).
+  Unique key (repo_key, commit_sha, level, prompt_version); the provider is not part of the key.
+- claim_guide_version(): an atomic claim with a 5-minute lease. A lease takeover deletes partial content first. A failed version can be re-claimed. Only service_role can execute it.
+- /api/generate chapter 1:
+  - existing content → 409 (unchanged)
+  - ready version for this commit → {cached:true, version_id}
+  - someone else holds a live lease → 202 {status:"generating"}
+  - otherwise quota check, then claim
+  The claimant's AI output is written by the server into guide_* for each phase (never copied from user-writable rows, D9), renewing the lease each time.
+  The version becomes ready once it has 3 chapters, ≥1 flashcard and ≥1 quiz question; ready_at, word_count and cost_usd (from the ledger) are set.
+  A failed phase marks the version failed and refunds the claimant's quota charge (FR-4.4: charged at chapter 1 as today, refunded on failure).
+- POST /api/guides/open: copies a ready version into the user's own conversion rows with the service role.
+  Subscribers: no AI call and no quota. Free plan: spends 1 generation (Q3); with none left → 403 upgrade_required. Writes a cache_hit ledger row with cost 0.
+- GET /api/guides/{id}/status: waiters poll every 3 s. An expired lease reports "stale", so the next requester takes over.
+- GET /api/guides/lookup, and the cache map in the /api/convert response (FR-2.1).
+- Conversion page:
+  - "Saved guide available · Built from commit abc1234 · N days ago" with an "Open guide (instant)" button.
+  - "Regenerate for latest commit" appears only when the cached SHA differs from the conversion's HEAD SHA.
+  - Waiting message: "Someone is already building this guide. It'll be ready in about a minute."
+- Settings > Privacy: a "Keep my guides private" switch (profiles.guides_private, default off). The DB trigger withdraws that user's shared versions immediately (status withdrawn, reason user_private).
+  Their own conversions are untouched. A user with the setting on can still read shared hits (FR-2.6).
+- Privacy and Terms each get one line about shared guides.
+
+Backup before migration: /workspace/out/apptotext-db-backup-pre-p2.json
+Migration applied: cache_p2_shared_cache (additive).
+
+DB probe (rolled back, nothing left behind)
+  user A claim → claimed/generating
+  user B, same key, live lease → not claimed/generating
+  18 more parallel claimants → 0 extra claims, 1 row in total
+  lease expired → user B takes over, partial chapters deleted (partial_left=0)
+  authenticated EXECUTE claim_guide_version → DENIED
+  authenticated SELECT guide_versions → DENIED
+
+Checks
+  vitest: 72/72 (new src/lib/cache/guides.test.ts: version picking, content checks, migration grants)
+  tsc: clean
+  eslint: no new findings in touched files (3 old ones in quiz/settings pages)
+  next build: compiled; new routes /api/guides/open, /api/guides/[id]/status, /api/guides/lookup

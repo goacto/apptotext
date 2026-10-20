@@ -36,6 +36,16 @@ export default function PrivacyPage() {
           submit are sent to these providers for content generation.
         </p>
 
+        <h2 className="text-lg font-semibold text-foreground">
+          Shared Guides
+        </h2>
+        <p>
+          Guides built from public GitHub repositories are saved and may be
+          shown to other people, without your name or any account details. You
+          can turn this off in Settings &gt; Privacy with &quot;Keep my guides
+          private&quot;. Guides from private repositories are never shared.
+        </p>
+
         <h2 className="text-lg font-semibold text-foreground">Contact</h2>
         <p>
           For privacy questions, reach out to the {GOACTO_SHORT} team.
