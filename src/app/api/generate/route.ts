@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { AIProvider, TextbookLevel } from "@/lib/types";
 import { callAI, streamAI } from "@/lib/ai/provider";
 import {
@@ -234,7 +235,8 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (chapterNumber === 1) {
-              await incrementGenerationCount(supabase, user.id);
+              // generation_count is service-role only (PR 0 column lock)
+              await incrementGenerationCount(createAdminClient(), user.id);
             }
 
             const doneData = JSON.stringify({
