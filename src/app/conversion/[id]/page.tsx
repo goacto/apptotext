@@ -45,6 +45,19 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+interface CachedLevel {
+  version_id: string;
+  sha: string;
+  built_at: string;
+  is_latest_sha: boolean;
+}
+
+function builtAgo(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
 function ConversionViewerContent() {
   const params = useParams();
   const router = useRouter();
@@ -81,6 +94,7 @@ function ConversionViewerContent() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [bookmarkedChapters, setBookmarkedChapters] = useState<Set<string>>(new Set());
+  const [cacheMap, setCacheMap] = useState<Record<number, CachedLevel>>({});
 
   // Load bookmarks from localStorage
   useEffect(() => {
@@ -149,6 +163,17 @@ function ConversionViewerContent() {
     });
   }, [supabase]);
 
+  const fetchCache = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/guides/lookup?conversion_id=${encodeURIComponent(conversionId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setCacheMap((data?.cache as Record<number, CachedLevel>) ?? {});
+    } catch {
+      // Cache lookup is best-effort
+    }
+  }, [conversionId]);
+
   useEffect(() => {
     if (!authLoaded) return;
     async function load() {
@@ -158,6 +183,12 @@ function ConversionViewerContent() {
     }
     load();
   }, [authLoaded, fetchConversion, fetchChapters]);
+
+  useEffect(() => {
+    if (user && conversion?.user_id === user.id && conversion.source_type === "github") {
+      fetchCache();
+    }
+  }, [user, conversion, fetchCache]);
 
   const chaptersForLevel = useMemo(
     () => chapters.filter((ch) => ch.level === activeLevel),
@@ -268,6 +299,11 @@ function ConversionViewerContent() {
       );
     }
 
+    if ((response.headers.get("content-type") || "").includes("application/json")) {
+      // Cached or someone else is building it (FR-2.5, US-4)
+      return (await response.json()) as { cached?: boolean; status?: string; version_id?: string };
+    }
+
     if (!response.body) {
       throw new Error("No response body for streaming");
     }
@@ -307,6 +343,42 @@ function ConversionViewerContent() {
       }
     }
     setStreamingContent(null);
+    return null;
+  }
+
+  async function openCached(versionId: string) {
+    setIsGenerating(true);
+    setGenerateError(null);
+    setGeneratePhase("Opening saved guide...");
+    try {
+      const res = await fetch("/api/guides/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversion_id: conversion!.id, level: activeLevel, version_id: versionId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `Could not open the saved guide (${res.status})`);
+      }
+      await fetchChapters();
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Could not open the saved guide.");
+    } finally {
+      setIsGenerating(false);
+      setGeneratePhase(null);
+    }
+  }
+
+  async function waitForVersion(versionId: string): Promise<string> {
+    // Poll every 3 seconds for up to 6 minutes.
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const res = await fetch(`/api/guides/${versionId}/status`);
+      if (!res.ok) continue;
+      const { status } = await res.json();
+      if (status !== "generating") return status as string;
+    }
+    return "timeout";
   }
 
   const TOTAL_CHAPTERS = 3;
@@ -321,7 +393,30 @@ function ConversionViewerContent() {
       // Stream 3 chapters sequentially with live preview
       for (let i = 1; i <= TOTAL_CHAPTERS; i++) {
         setGeneratePhase(`Generating chapter ${i} of ${TOTAL_CHAPTERS}...`);
-        await streamChapter(i);
+        let result = await streamChapter(i);
+        for (let attempt = 0; result && attempt < 2; attempt++) {
+          if (result.cached && result.version_id) {
+            setIsGenerating(false);
+            await openCached(result.version_id);
+            await fetchCache();
+            return;
+          }
+          if (result.status === "generating" && result.version_id) {
+            setGeneratePhase("Someone is already building this guide. It'll be ready in about a minute.");
+            const outcome = await waitForVersion(result.version_id);
+            if (outcome === "ready") {
+              setIsGenerating(false);
+              await openCached(result.version_id);
+              await fetchCache();
+              return;
+            }
+            // Lease expired or the build failed: try to take over.
+            setGeneratePhase(`Generating chapter ${i} of ${TOTAL_CHAPTERS}...`);
+            result = await streamChapter(i);
+            continue;
+          }
+          break;
+        }
       }
 
       // Generate flashcards + quiz in parallel (non-streamed, need full JSON)
@@ -588,10 +683,29 @@ function ConversionViewerContent() {
                               {generateError}
                             </p>
                           )}
+                        {cacheMap[level.level] && (
+                          <div className="mb-4 flex flex-col items-center gap-2">
+                            <p className="text-sm text-muted-foreground">
+                              Saved guide available · Built from commit{" "}
+                              <code>{cacheMap[level.level].sha.slice(0, 7)}</code> ·{" "}
+                              {builtAgo(cacheMap[level.level].built_at)}
+                            </p>
+                            <Button
+                              onClick={() => openCached(cacheMap[level.level].version_id)}
+                              disabled={isGenerating}
+                              size="lg"
+                            >
+                              <BookOpen className="size-4" />
+                              Open guide (instant)
+                            </Button>
+                          </div>
+                        )}
+                        {(!cacheMap[level.level] || !cacheMap[level.level].is_latest_sha) && (
                         <Button
                           onClick={handleGenerate}
                           disabled={isGenerating}
                           size="lg"
+                          variant={cacheMap[level.level] ? "outline" : "default"}
                         >
                           {isGenerating && activeLevel === level.level ? (
                             <>
@@ -601,10 +715,13 @@ function ConversionViewerContent() {
                           ) : (
                             <>
                               <Zap className="size-4" />
-                              Generate {level.level} Content
+                              {cacheMap[level.level]
+                                ? "Regenerate for latest commit"
+                                : `Generate ${level.level} Content`}
                             </>
                           )}
                         </Button>
+                        )}
                         </>
                         )}
                       </CardContent>
