@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
-import { canGenerate, getUserSubscription, incrementGenerationCount, planFromStatus } from "@/lib/subscription";
+import { canGenerate, chargeGenerationOnce, getUserSubscription, planFromStatus } from "@/lib/subscription";
 import { copyVersionToConversion } from "@/lib/cache/guides";
 import { recordLedger } from "@/lib/ledger";
 
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    await incrementGenerationCount(admin, user.id);
-    charged = true;
+    // Atomic, once per (conversion, level): a double-click cannot charge twice.
+    charged = await chargeGenerationOnce(admin, user.id, conversion.id, level, null);
   }
 
   try {
