@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { AIProvider, TextbookLevel } from "@/lib/types";
 import { callAI, PROVIDER_MODELS, streamAI } from "@/lib/ai/provider";
 import type { TokenUsage } from "@/lib/ai/pricing";
-import { recordLedger } from "@/lib/ledger";
+import { estimateTokens, finishLedger, progressLedger, recordLedger, startLedger } from "@/lib/ledger";
 import { sha256 } from "@/lib/github/source";
 import {
   claimVersion,
@@ -20,6 +20,7 @@ import {
   getTextbookSystemPrompt,
   getTextbookUserPrompt,
   getFlashcardSystemPrompt,
+  CHAPTER_MAX_TOKENS,
   getFlashcardUserPrompt,
   getQuizSystemPrompt,
   getQuizUserPrompt,
@@ -40,6 +41,9 @@ interface GenerateRequestBody {
 // Hobby + Fluid compute allows up to 300s. A full Sonnet 4.6 chapter (max_tokens 8192) takes ~1.5–2 min,
 // so 60s killed every chapter mid-stream (no done event, no ledger row, no saved chapter).
 export const maxDuration = 300;
+/** Abort the model call here, leaving ~30s to save the chapter and finalize the ledger. */
+const CHAPTER_DEADLINE_MS = 265_000;
+const LEDGER_HEARTBEAT_MS = 15_000;
 
 const VALID_LEVELS: TextbookLevel[] = [101, 201, 301, 401, 501];
 
@@ -328,33 +332,80 @@ export async function POST(request: NextRequest) {
         },
       ];
 
-      // Stream the chapter content via SSE
-      const aiStream = streamAI(provider, aiMessages, (u) => {
-        usage = u;
+      // Ledger row first, so a killed invocation still leaves a record (finalized below).
+      const promptChars = aiMessages.reduce((n, m) => n + m.content.length, 0);
+      const ledgerId = await startLedger(admin, { ...ledgerBase, phase: `chapter_${chapterNumber}`, would_hit: wouldHit });
+      const estimate = (): TokenUsage => ({
+        inputTokens: usage?.inputTokens || estimateTokens(promptChars),
+        outputTokens: Math.max(usage?.outputTokens ?? 0, estimateTokens(fullContent.length)),
       });
+
+      // Abort upstream before Vercel's 300s limit so we always get to record the outcome.
+      const abort = new AbortController();
+      let abortReason: "deadline" | "client_disconnected" | null = null;
+      const deadline = setTimeout(() => {
+        abortReason = "deadline";
+        abort.abort();
+      }, CHAPTER_DEADLINE_MS);
+      let stopReason: string | null = null;
+      let lastBeat = Date.now();
+
+      // Stream the chapter content via SSE
+      const aiStream = streamAI(
+        provider,
+        aiMessages,
+        (u) => {
+          usage = u;
+        },
+        { maxTokens: CHAPTER_MAX_TOKENS, signal: abort.signal, onStopReason: (r) => (stopReason = r) }
+      );
       const reader = aiStream.getReader();
 
       const encoder = new TextEncoder();
       let fullContent = "";
 
+      const finishAborted = async (detail: string) => {
+        clearTimeout(deadline);
+        await finishLedger(admin, ledgerId, {
+          ...ledgerBase,
+          phase: `chapter_${chapterNumber}`,
+          outcome: abortReason ? "aborted" : "failed",
+          usage: estimate(),
+          usage_estimated: true,
+          would_hit: wouldHit,
+          detail,
+        });
+        if (versionId) await failVersion(admin, versionId, `chapter ${chapterNumber} ${abortReason ?? "stream error"}`);
+      };
+
       const responseStream = new ReadableStream({
+        async cancel() {
+          // Client went away: stop paying for tokens nobody will see.
+          abortReason = abortReason ?? "client_disconnected";
+          abort.abort();
+          await finishAborted(abortReason);
+        },
         async pull(controller) {
           let done: boolean;
           let value: string | undefined;
           try {
             ({ done, value } = await reader.read());
           } catch (streamError) {
-            await recordLedger(admin, {
-              ...ledgerBase,
-              phase: `chapter_${chapterNumber}`,
-              outcome: "failed",
-              usage,
-              detail: streamError instanceof Error ? streamError.message.slice(0, 300) : "stream error",
-            });
-            if (versionId) await failVersion(admin, versionId, `chapter ${chapterNumber} stream error`);
-            throw streamError;
+            // After cancel() the stream is closed and cancel() already finalized the ledger.
+            if (abortReason === "client_disconnected") return;
+            await finishAborted(
+              abortReason ?? (streamError instanceof Error ? streamError.message.slice(0, 300) : "stream error")
+            );
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ done: true, chapter: { id: null }, error: abortReason === "deadline" ? "Generation took too long. Please try again." : "Generation failed. Please try again." })}\n\n`
+              )
+            );
+            controller.close();
+            return;
           }
           if (done) {
+            clearTimeout(deadline);
             // Stream complete — save to DB, send final event
             const keyConcepts = extractKeyConcepts(fullContent);
             const chapterTitle = extractChapterTitle(fullContent);
@@ -402,14 +453,15 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            await recordLedger(admin, {
+            await finishLedger(admin, ledgerId, {
               ...ledgerBase,
               phase: `chapter_${chapterNumber}`,
               outcome: chapterError ? "failed" : "generated",
-              usage,
+              usage: usage ?? estimate(),
+              usage_estimated: !usage,
               quota_charged: charged,
               would_hit: wouldHit,
-              detail: chapterError?.message ?? null,
+              detail: chapterError?.message ?? (stopReason === "max_tokens" ? "truncated: max_tokens" : null),
             });
 
             const doneData = JSON.stringify({
@@ -425,6 +477,11 @@ export async function POST(request: NextRequest) {
           fullContent += value ?? "";
           const chunkData = JSON.stringify({ text: value });
           controller.enqueue(encoder.encode(`data: ${chunkData}\n\n`));
+          if (Date.now() - lastBeat > LEDGER_HEARTBEAT_MS) {
+            lastBeat = Date.now();
+            void progressLedger(admin, ledgerId, PROVIDER_MODELS[provider], estimate());
+            if (versionId) void renewLease(admin, versionId);
+          }
         },
       });
 
