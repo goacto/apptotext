@@ -2,7 +2,8 @@ import { AIProvider } from "../types";
 import type { TokenUsage } from "./pricing";
 
 export const PROVIDER_MODELS: Record<AIProvider, string> = {
-  claude: "claude-sonnet-4-20250514",
+  // claude-sonnet-4-20250514 was retired by Anthropic on 2026-06-15.
+  claude: "claude-sonnet-4-6",
   openai: "gpt-4o",
   grok: "grok-3",
 };
@@ -101,7 +102,7 @@ function streamClaude(messages: AIMessage[], onUsage?: UsageCallback): ReadableS
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: PROVIDER_MODELS.claude,
           stream: true,
           max_tokens: 8192,
           system: systemMessage?.content || "",
@@ -258,7 +259,7 @@ async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: PROVIDER_MODELS.claude,
       stream: false,
       max_tokens: 8192,
       system: systemMessage?.content || "",

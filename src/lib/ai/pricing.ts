@@ -1,5 +1,11 @@
-/** USD per 1M tokens (input, output). Used for the generations ledger (FR-4.6). */
+/**
+ * USD per 1M tokens (input, output). Used for the generations ledger (FR-4.6).
+ * Source: https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-10-20):
+ * Claude Sonnet 4.6 = $3 / MTok input, $15 / MTok output (global endpoint, no caching).
+ */
 export const MODEL_PRICES: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-6": { input: 3, output: 15 },
+  // Retired 2026-06-15; kept so historical ledger rows still price.
   "claude-sonnet-4-20250514": { input: 3, output: 15 },
   "gpt-4o": { input: 2.5, output: 10 },
   "grok-3": { input: 3, output: 15 },
