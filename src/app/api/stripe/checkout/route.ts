@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 
 export const maxDuration = 30;
@@ -71,7 +72,8 @@ export async function POST(request: NextRequest) {
       });
       customerId = customer.id;
 
-      await supabase
+      // stripe_customer_id is service-role only (PR 0 column lock)
+      await createAdminClient()
         .from("profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", user.id);

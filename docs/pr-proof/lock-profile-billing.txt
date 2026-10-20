@@ -1,0 +1,36 @@
+PR 0: lock profile billing columns (G1) and stop public profile reads (G2)
+Spec: Saved-Guide Cache & Previews REQ v0.1, section 8. Zach approved on 2026-10-20 at 2:24 PM ET.
+
+Backup taken before the migration: /workspace/out/apptotext-schema-policies-backup-2026-10-20.json
+(policies, grants, column grants, RLS flags, columns, triggers and functions)
+Migration: supabase/migrations/20261020_lock_profile_billing.sql
+Applied to uwsvqzartbukejiivvlg as lock_profile_billing.
+
+Live role checks. Run as the real Postgres roles with JWT claims for the existing profile; no data changed.
+  authenticated SELECT profiles: own row only (1 visible, 0 rows of other users)
+  authenticated UPDATE subscription_status: DENIED (permission denied for table profiles)
+  authenticated UPDATE generation_count: DENIED
+  authenticated UPDATE generation_limit_override / grandfathered_plan: DENIED
+  authenticated UPDATE stripe_customer_id: DENIED
+  authenticated INSERT profiles: DENIED
+  authenticated UPDATE display_name / preferred_ai_provider / total_xp / last_activity: OK (1 row)
+  guard trigger, tested with the column grant temporarily re-added and then rolled back: DENIED ("profile billing columns are read-only for clients")
+  anon SELECT / UPDATE profiles: DENIED
+  anon and authenticated SELECT public_profiles: OK
+  service_role UPDATE billing columns (webhook path) and generation_count increment/revert: OK
+
+Live REST checks with the anon key against https://uwsvqzartbukejiivvlg.supabase.co/rest/v1:
+  GET   /profiles        -> 401 42501 permission denied for table profiles
+  PATCH /profiles        -> 401 42501 permission denied for table profiles
+  GET   /public_profiles -> 200, columns: avatar_url, current_streak, display_name, id, longest_streak, total_xp
+
+App changes:
+  generate route: incrementGenerationCount now runs with the service-role client.
+  checkout route: the stripe_customer_id write now runs with the service-role client.
+  leaderboard: reads public_profiles. The old query asked for profiles.badges and email; badges does not exist, so the query was failing.
+
+Checks:
+  vitest: 5 files, 29 tests pass (new: src/lib/profile-lock.test.ts, 4 tests)
+  tsc: clean
+  eslint on touched files: 0 errors (2 old warnings in leaderboard)
+  next build: compiled successfully

@@ -98,8 +98,8 @@ function LeaderboardContent() {
     try {
       // Fetch top 50 profiles ordered by XP
       const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url, total_xp, current_streak, longest_streak, last_activity, badges, created_at, email")
+        .from("public_profiles")
+        .select("id, display_name, avatar_url, total_xp, current_streak, longest_streak")
         .order("total_xp", { ascending: false })
         .limit(50);
 
@@ -124,7 +124,7 @@ function LeaderboardContent() {
       const rows: LeaderboardRow[] = allProfiles.map((p, index) => ({
         rank: index + 1,
         user_id: p.id,
-        display_name: p.display_name || p.email?.split("@")[0] || "Learner",
+        display_name: p.display_name || "Learner",
         avatar_url: p.avatar_url,
         total_xp: p.total_xp,
         current_streak: p.current_streak,
@@ -160,7 +160,7 @@ function LeaderboardContent() {
 
           // Determine rank by counting users with more XP
           const { count: usersAbove } = await supabase
-            .from("profiles")
+            .from("public_profiles")
             .select("*", { count: "exact", head: true })
             .gt("total_xp", myProfile.total_xp);
 
