@@ -1,6 +1,9 @@
 import { TextbookLevel } from "../types";
 import { GOACTO_FULL } from "../constants";
 
+/** Bump when prompts change. Cached guides record the version they were built with. */
+export const PROMPT_VERSION = "p1";
+
 const LEVEL_DESCRIPTIONS: Record<TextbookLevel, string> = {
   101: `BEGINNER (101): Write for someone completely new to this topic. Use simple language, analogies, and step-by-step explanations. Define every technical term when first used. Include "Try it yourself" exercises.`,
   201: `INTERMEDIATE (201): Write for someone with basic understanding. Introduce patterns, best practices, and practical real-world usage. Include code examples and mini-projects.`,
