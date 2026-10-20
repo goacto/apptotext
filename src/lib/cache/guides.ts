@@ -22,14 +22,17 @@ export interface ConversionRepoFields {
   source_content?: string | null;
 }
 
-/** FR-5.2: repo public AND generator not private. (Do-not-cache arrives in PR 4.) */
+/** FR-5.2: repo public AND NOT do-not-cache (FR-7.5) AND generator not private. */
 export async function isCacheEligible(admin: SupabaseClient, conv: ConversionRepoFields, generatorId: string): Promise<boolean> {
   if (!conv.repo_key || !conv.commit_sha || !conv.github_repo_id) return false;
-  const [{ data: repo }, { data: prof }] = await Promise.all([
+  const [{ data: repo }, { data: prof }, dnc] = await Promise.all([
     admin.from("repos").select("is_public").eq("github_repo_id", conv.github_repo_id).maybeSingle(),
     admin.from("profiles").select("guides_private").eq("id", generatorId).maybeSingle(),
+    admin.rpc("is_do_not_cache", { p_github_repo_id: conv.github_repo_id, p_repo_key: conv.repo_key }),
   ]);
-  return Boolean(repo?.is_public) && !prof?.guides_private;
+  // Fail closed if the do-not-cache check errors.
+  const blocked = dnc.error ? true : dnc.data === true;
+  return Boolean(repo?.is_public) && !prof?.guides_private && !blocked;
 }
 
 /** Newest ready version per level for a repo; exact-SHA versions win (FR-2.1, FR-2.4). */
