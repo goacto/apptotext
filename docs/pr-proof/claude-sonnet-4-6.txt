@@ -1,0 +1,10 @@
+Swap the retired Claude model for claude-sonnet-4-6 (Zach picked it, 2026-10-20 3:04 PM ET)
+
+Why: claude-sonnet-4-20250514 was retired by Anthropic on 2026-06-15. Every Claude call in prod (generate, chat) returned
+404 not_found_error "model: claude-sonnet-4-20250514"; the PR #5 ledger recorded it.
+
+Change: PROVIDER_MODELS.claude = "claude-sonnet-4-6". It is used by streamClaude and callClaude, so there are no more hard-coded IDs.
+Pricing (from https://platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-20):
+  Claude Sonnet 4.6: $3 / MTok input, $15 / MTok output. The same rates as Sonnet 4, so the cost per generation is unchanged.
+The retired model's price row is kept so old ledger rows still price.
+Checks: vitest 73/73, tsc clean, eslint clean, next build OK.

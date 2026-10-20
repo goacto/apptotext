@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anthropicUsageFromEvent, openAIUsage } from "./provider";
+import { anthropicUsageFromEvent, openAIUsage, PROVIDER_MODELS } from "./provider";
 import { costUsd } from "./pricing";
 import { ledgerRow } from "@/lib/ledger";
 
@@ -20,7 +20,11 @@ describe("token usage capture (FR-4.7)", () => {
 });
 
 describe("cost and ledger rows (FR-4.6)", () => {
-  it("prices claude sonnet 4 at $3/$15 per M", () => {
+  it("uses claude-sonnet-4-6 (Sonnet 4 is retired) and prices it at $3/$15 per M", () => {
+    expect(PROVIDER_MODELS.claude).toBe("claude-sonnet-4-6");
+    expect(costUsd(PROVIDER_MODELS.claude, { inputTokens: 10_000, outputTokens: 4_000 })).toBe(0.09);
+  });
+  it("still prices the retired claude sonnet 4 for old ledger rows", () => {
     expect(costUsd("claude-sonnet-4-20250514", { inputTokens: 10_000, outputTokens: 4_000 })).toBe(0.09);
   });
   it("null when usage or model unknown", () => {
