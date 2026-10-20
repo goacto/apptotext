@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { fetchRepoMeta, publicToken } from "@/lib/github/api";
 import { appendEvent, checkOwnership, takedown, type RemovalType } from "@/lib/cache/removal";
-import { rateLimit } from "@/lib/rate-limit";
+import { durableRateLimit } from "@/lib/limits";
 
 /**
  * FR-7.2 (a)/(b): "Verify now". Needs the request id and its token (only the requester has both).
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { request_id?: string; token?: string };
   if (!body.request_id || !body.token) return NextResponse.json({ error: "request_id and token are required" }, { status: 400 });
 
-  const { allowed } = rateLimit(`removal-verify:${body.request_id}`, 10, 3_600_000);
+  const allowed = await durableRateLimit(createAdminClient(), `removal-verify:${body.request_id}`, 10, 3_600_000);
   if (!allowed) return NextResponse.json({ error: "Too many attempts. Please wait a few minutes." }, { status: 429 });
 
   const admin = createAdminClient();

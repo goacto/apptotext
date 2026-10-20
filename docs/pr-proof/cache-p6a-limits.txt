@@ -1,0 +1,22 @@
+PR 6a - spend and abuse limits (spec FR-8.1, FR-8.2, FR-8.3, FR-9.1). Must be live before PR 5 (public library).
+
+What changed
+- Migration 20261020_cache_p6_limits.sql (additive, service-role only):
+  rate_limits table + rate_limit_hit(key, window_s, max) (atomic sliding window over two fixed windows),
+  prune_rate_limits() (daily cron), ai_spend_today_et() (sum of ledger cost_usd today, America/New_York,
+  including estimated "started" rows of in-flight/killed runs), index on generations(created_at).
+- src/lib/limits.ts: durableRateLimit (falls back to the in-memory limiter if the DB call fails),
+  dailyCapUsd (AI_DAILY_CAP_USD, default 10), aiCapReached (fails closed), regenerateBlocked (6h).
+- Durable limits replace in-memory ones on: generate (20/min/user), convert (10/min/user),
+  guides/open (60/h/user), guides/[id]/preview (120/h/IP), library/remove/verify (10/h/request).
+  (library/remove already used a DB count.)
+- generate, chapter 1 only, after the cache-hit return and the plan check:
+  * cap reached -> 503 "We're at capacity for today. Cached guides still work." + ledger refused/daily_cap.
+  * Regenerate (a ready version exists for another commit) within 6h of the newest version for that
+    repo/level -> 429 + ledger refused/regenerate_cooldown. First builds are never blocked.
+- LEVEL_COST_ESTIMATE {0.8,1.0,1.2} -> {0.24,0.30,0.42}, from prod measurements:
+  p2 prompt $0.2432/level (escape-string-regexp, 9,282 in + 14,349 out tokens); p1 $0.4166 (is-odd).
+  $10/day therefore covers ~23-41 new levels; cache hits cost $0 and are never blocked.
+- Daily cron also prunes rate_limits rows older than 2 days.
+
+Tests: src/lib/limits.test.ts (11 tests). vitest 129/129 pass. next build OK. eslint clean on touched files.
