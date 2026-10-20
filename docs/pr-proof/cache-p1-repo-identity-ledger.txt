@@ -1,0 +1,28 @@
+Saved-Guide Cache REQ v0.1, PR 1: repo identity, SHA pinning and generations ledger (shadow mode)
+Zach approved on 2026-10-20 at 2:32 PM ET. Users see no change: guides still generate as before.
+
+What ships
+- normalizeRepo (FR-1.1): case-insensitive; strips .git, trailing slash, query, fragment, /tree and /blob paths; accepts "owner/name" shorthand.
+- resolveRepo (FR-1.2): GET /repos/{o}/{r} gives the numeric id, which survives renames. Renamed inputs are stored in repo_aliases.
+- G4 / FR-1.6: GitHub conversions require private=false, visibility=public, and success through a public-only path (GITHUB_PUBLIC_TOKEN, or unauthenticated).
+  Private or unconfirmable repos get 403 "private or not publicly visible". The server GITHUB_TOKEN can no longer expose private repos.
+- HEAD SHA (FR-1.3 to FR-1.5): Accept: application/vnd.github.sha with If-None-Match (ETag), cached in repo_heads for 10 minutes (REPO_HEAD_TTL_SECONDS).
+  Concurrent lookups share one request per instance.
+  Rate-limit rules: below 500 remaining, a stale head up to 24 h old is served; below 100, or on a 403/429 rate limit, new lookups stop until reset.
+  Each such event is logged to the ledger as phase=github_rate_limit.
+- SHA-pinned source (FR-1.7): tree at /git/trees/{sha}. README, package.json and entry files come from raw.githubusercontent.com at that SHA.
+  The source gets a sha256 source_hash. Only key files that exist in the tree are fetched, so a conversion makes 3 GitHub API calls instead of about 20.
+- conversions.repo_key / github_repo_id / commit_sha are set server-side. Clients can no longer insert or update those columns, or rewrite source_content (column grants, D9).
+- generations ledger (FR-4.6, FR-4.7): one row per AI call with provider, model, prompt_version (p1), tokens and cost_usd.
+  Usage comes from Anthropic message_start/message_delta, OpenAI/xAI stream_options.include_usage, or the non-stream usage field.
+  Chapter 1 rows carry quota_charged and would_hit. would_hit means another conversion of the same repo and commit already has all 3 chapters at that level (shadow hit counter).
+- New tables repos, repo_aliases, repo_heads and generations: RLS on, no policies, client grants revoked (service role only).
+
+Backup before migration: /workspace/out/apptotext-db-backup-pre-p1.json (all public tables, grants, policies)
+Migration applied: cache_p1_repo_identity_ledger. Additive only, and the old prod code keeps working (its conversion insert columns are still granted).
+
+Checks
+  vitest: 10 files, 61 tests pass (new: normalize, api/source, usage/cost/ledger, migration grants)
+  tsc: clean
+  eslint: touched files clean (6 old errors in src/lib/goactoPing.test.ts from PR #1, untouched)
+  next build: compiled successfully

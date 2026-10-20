@@ -1,4 +1,36 @@
 import { AIProvider } from "../types";
+import type { TokenUsage } from "./pricing";
+
+export const PROVIDER_MODELS: Record<AIProvider, string> = {
+  claude: "claude-sonnet-4-20250514",
+  openai: "gpt-4o",
+  grok: "grok-3",
+};
+
+export type UsageCallback = (usage: TokenUsage | null) => void;
+
+/** Merge a usage fragment from an Anthropic SSE event (message_start / message_delta). */
+export function anthropicUsageFromEvent(parsed: Record<string, unknown>, acc: TokenUsage): TokenUsage {
+  const next = { ...acc };
+  if (parsed.type === "message_start") {
+    const u = (parsed.message as { usage?: Record<string, number> } | undefined)?.usage;
+    if (u) {
+      next.inputTokens = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+      next.outputTokens = Math.max(next.outputTokens, u.output_tokens ?? 0);
+    }
+  } else if (parsed.type === "message_delta") {
+    const u = parsed.usage as Record<string, number> | undefined;
+    if (u?.output_tokens != null) next.outputTokens = u.output_tokens;
+  }
+  return next;
+}
+
+/** Usage from an OpenAI-compatible chunk/response ({usage:{prompt_tokens, completion_tokens}}). */
+export function openAIUsage(parsed: Record<string, unknown>): TokenUsage | null {
+  const u = parsed.usage as Record<string, number> | undefined | null;
+  if (!u || u.prompt_tokens == null) return null;
+  return { inputTokens: u.prompt_tokens ?? 0, outputTokens: u.completion_tokens ?? 0 };
+}
 
 export interface AIMessage {
   role: "system" | "user" | "assistant";
@@ -8,6 +40,8 @@ export interface AIMessage {
 export interface AIResponse {
   content: string;
   provider: AIProvider;
+  model: string;
+  usage: TokenUsage | null;
 }
 
 export async function callAI(
@@ -32,21 +66,22 @@ export async function callAI(
  */
 export function streamAI(
   provider: AIProvider,
-  messages: AIMessage[]
+  messages: AIMessage[],
+  onUsage?: UsageCallback
 ): ReadableStream<string> {
   switch (provider) {
     case "claude":
-      return streamClaude(messages);
+      return streamClaude(messages, onUsage);
     case "openai":
-      return streamOpenAI(messages);
+      return streamOpenAI(messages, onUsage);
     case "grok":
-      return streamGrok(messages);
+      return streamGrok(messages, onUsage);
     default:
       throw new Error(`Unknown AI provider: ${provider}`);
   }
 }
 
-function streamClaude(messages: AIMessage[]): ReadableStream<string> {
+function streamClaude(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("Claude is not configured. ANTHROPIC_API_KEY is missing.");
   }
@@ -83,6 +118,8 @@ function streamClaude(messages: AIMessage[]): ReadableStream<string> {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+      let sawUsage = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -100,12 +137,16 @@ function streamClaude(messages: AIMessage[]): ReadableStream<string> {
             const parsed = JSON.parse(data);
             if (parsed.type === "content_block_delta" && parsed.delta?.text) {
               controller.enqueue(parsed.delta.text);
+            } else if (parsed.type === "message_start" || parsed.type === "message_delta") {
+              usage = anthropicUsageFromEvent(parsed, usage);
+              sawUsage = true;
             }
           } catch {
             // Skip unparseable lines
           }
         }
       }
+      onUsage?.(sawUsage ? usage : null);
       controller.close();
     },
   });
@@ -115,7 +156,8 @@ function streamOpenAICompatible(
   url: string,
   headers: Record<string, string>,
   model: string,
-  messages: AIMessage[]
+  messages: AIMessage[],
+  onUsage?: UsageCallback
 ): ReadableStream<string> {
   return new ReadableStream({
     async start(controller) {
@@ -127,6 +169,7 @@ function streamOpenAICompatible(
           stream: true,
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
           max_tokens: 8192,
+          stream_options: { include_usage: true },
         }),
       });
 
@@ -139,6 +182,7 @@ function streamOpenAICompatible(
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let usage: TokenUsage | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -158,17 +202,19 @@ function streamOpenAICompatible(
             if (delta) {
               controller.enqueue(delta);
             }
+            usage = openAIUsage(parsed) ?? usage;
           } catch {
             // Skip
           }
         }
       }
+      onUsage?.(usage);
       controller.close();
     },
   });
 }
 
-function streamOpenAI(messages: AIMessage[]): ReadableStream<string> {
+function streamOpenAI(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OpenAI is not configured. OPENAI_API_KEY is missing.");
   }
@@ -176,11 +222,12 @@ function streamOpenAI(messages: AIMessage[]): ReadableStream<string> {
     "https://api.openai.com/v1/chat/completions",
     { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     "gpt-4o",
-    messages
+    messages,
+    onUsage
   );
 }
 
-function streamGrok(messages: AIMessage[]): ReadableStream<string> {
+function streamGrok(messages: AIMessage[], onUsage?: UsageCallback): ReadableStream<string> {
   if (!process.env.XAI_API_KEY) {
     throw new Error("Grok is not configured. XAI_API_KEY is missing.");
   }
@@ -188,7 +235,8 @@ function streamGrok(messages: AIMessage[]): ReadableStream<string> {
     "https://api.x.ai/v1/chat/completions",
     { Authorization: `Bearer ${process.env.XAI_API_KEY}` },
     "grok-3",
-    messages
+    messages,
+    onUsage
   );
 }
 
@@ -224,9 +272,17 @@ async function callClaude(messages: AIMessage[]): Promise<AIResponse> {
   }
 
   const data = await response.json();
+  const u = data.usage as Record<string, number> | undefined;
   return {
     content: data.content[0].text,
     provider: "claude",
+    model: PROVIDER_MODELS.claude,
+    usage: u
+      ? {
+          inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
+          outputTokens: u.output_tokens ?? 0,
+        }
+      : null,
   };
 }
 
@@ -257,6 +313,8 @@ async function callOpenAI(messages: AIMessage[]): Promise<AIResponse> {
   return {
     content: data.choices[0].message.content,
     provider: "openai",
+    model: PROVIDER_MODELS.openai,
+    usage: openAIUsage(data),
   };
 }
 
@@ -287,5 +345,7 @@ async function callGrok(messages: AIMessage[]): Promise<AIResponse> {
   return {
     content: data.choices[0].message.content,
     provider: "grok",
+    model: PROVIDER_MODELS.grok,
+    usage: openAIUsage(data),
   };
 }

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AIProvider, TextbookLevel } from "@/lib/types";
-import { callAI, streamAI } from "@/lib/ai/provider";
+import { callAI, PROVIDER_MODELS, streamAI } from "@/lib/ai/provider";
+import type { TokenUsage } from "@/lib/ai/pricing";
+import { recordLedger } from "@/lib/ledger";
 import {
   getTextbookSystemPrompt,
   getTextbookUserPrompt,
@@ -80,6 +82,41 @@ function parseJsonFromAIResponse(text: string): unknown {
   }
 
   throw new Error("Failed to parse JSON from AI response");
+}
+
+/** Shadow-mode check (PR 1): another conversion of the same repo + commit already has all 3 chapters at this level. */
+async function wouldHaveHit(
+  admin: ReturnType<typeof createAdminClient>,
+  conversionId: string,
+  repoKey: string,
+  commitSha: string,
+  level: number
+): Promise<boolean | null> {
+  try {
+    const { data: siblings } = await admin
+      .from("conversions")
+      .select("id")
+      .eq("repo_key", repoKey)
+      .eq("commit_sha", commitSha)
+      .neq("id", conversionId)
+      .limit(50);
+    const ids = (siblings ?? []).map((r) => r.id as string);
+    if (!ids.length) return false;
+    const { data: chapters } = await admin
+      .from("chapters")
+      .select("conversion_id, chapter_number")
+      .in("conversion_id", ids)
+      .eq("level", level);
+    const byConv = new Map<string, Set<number>>();
+    for (const c of chapters ?? []) {
+      const set = byConv.get(c.conversion_id as string) ?? new Set<number>();
+      set.add(c.chapter_number as number);
+      byConv.set(c.conversion_id as string, set);
+    }
+    return [...byConv.values()].some((set) => set.size >= 3);
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -197,6 +234,23 @@ export async function POST(request: NextRequest) {
 
       const sourceContent = conversion.source_content as string;
       const title = conversion.title as string;
+      const admin = createAdminClient();
+      const cacheEligible = Boolean(conversion.commit_sha && conversion.repo_key);
+      // PR 1 shadow mode: would this level have been a cache hit?
+      const wouldHit =
+        chapterNumber === 1 && cacheEligible
+          ? await wouldHaveHit(admin, conversion.id, conversion.repo_key, conversion.commit_sha, body.level)
+          : null;
+      let usage: TokenUsage | null = null;
+      const ledgerBase = {
+        user_id: user.id,
+        conversion_id: conversion.id as string,
+        repo_key: (conversion.repo_key as string | null) ?? null,
+        level: body.level,
+        cache_eligible: cacheEligible,
+        ai_provider: provider,
+        model: PROVIDER_MODELS[provider],
+      };
 
       const aiMessages = [
         { role: "system" as const, content: getTextbookSystemPrompt(body.level) },
@@ -207,7 +261,9 @@ export async function POST(request: NextRequest) {
       ];
 
       // Stream the chapter content via SSE
-      const aiStream = streamAI(provider, aiMessages);
+      const aiStream = streamAI(provider, aiMessages, (u) => {
+        usage = u;
+      });
       const reader = aiStream.getReader();
 
       const encoder = new TextEncoder();
@@ -215,7 +271,20 @@ export async function POST(request: NextRequest) {
 
       const responseStream = new ReadableStream({
         async pull(controller) {
-          const { done, value } = await reader.read();
+          let done: boolean;
+          let value: string | undefined;
+          try {
+            ({ done, value } = await reader.read());
+          } catch (streamError) {
+            await recordLedger(admin, {
+              ...ledgerBase,
+              phase: `chapter_${chapterNumber}`,
+              outcome: "failed",
+              usage,
+              detail: streamError instanceof Error ? streamError.message.slice(0, 300) : "stream error",
+            });
+            throw streamError;
+          }
           if (done) {
             // Stream complete — save to DB, send final event
             const keyConcepts = extractKeyConcepts(fullContent);
@@ -236,8 +305,18 @@ export async function POST(request: NextRequest) {
 
             if (chapterNumber === 1) {
               // generation_count is service-role only (PR 0 column lock)
-              await incrementGenerationCount(createAdminClient(), user.id);
+              await incrementGenerationCount(admin, user.id);
             }
+
+            await recordLedger(admin, {
+              ...ledgerBase,
+              phase: `chapter_${chapterNumber}`,
+              outcome: chapterError ? "failed" : "generated",
+              usage,
+              quota_charged: chapterNumber === 1,
+              would_hit: wouldHit,
+              detail: chapterError?.message ?? null,
+            });
 
             const doneData = JSON.stringify({
               done: true,
@@ -249,7 +328,7 @@ export async function POST(request: NextRequest) {
             return;
           }
 
-          fullContent += value;
+          fullContent += value ?? "";
           const chunkData = JSON.stringify({ text: value });
           controller.enqueue(encoder.encode(`data: ${chunkData}\n\n`));
         },
@@ -289,6 +368,19 @@ export async function POST(request: NextRequest) {
           content: getFlashcardUserPrompt(chapter.content, body.level),
         },
       ]);
+
+      await recordLedger(createAdminClient(), {
+        user_id: user.id,
+        conversion_id: conversion.id,
+        repo_key: conversion.repo_key ?? null,
+        level: body.level,
+        phase: "flashcards",
+        outcome: "generated",
+        cache_eligible: Boolean(conversion.commit_sha && conversion.repo_key),
+        ai_provider: provider,
+        model: flashcardResponse.model,
+        usage: flashcardResponse.usage,
+      });
 
       let flashcardsData: { front: string; back: string; difficulty: number }[] = [];
       try {
@@ -362,6 +454,19 @@ export async function POST(request: NextRequest) {
           content: getQuizUserPrompt(chapter.content, body.level, 10),
         },
       ]);
+
+      await recordLedger(createAdminClient(), {
+        user_id: user.id,
+        conversion_id: conversion.id,
+        repo_key: conversion.repo_key ?? null,
+        level: body.level,
+        phase: "quiz",
+        outcome: "generated",
+        cache_eligible: Boolean(conversion.commit_sha && conversion.repo_key),
+        ai_provider: provider,
+        model: quizResponse.model,
+        usage: quizResponse.usage,
+      });
 
       let quizData: {
         question: string;
