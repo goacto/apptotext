@@ -17,6 +17,20 @@ describe("shaLookupMode (FR-1.5)", () => {
   });
 });
 
+describe("shaLookupMode scales to the real limit", () => {
+  const now = 1_000_000;
+  it("unauthenticated 60/h: 59 left is fresh, 5 is stale_ok, 1 is blocked", () => {
+    expect(shaLookupMode({ remaining: 59, resetAt: now + 1000, limit: 60 }, now)).toBe("fresh");
+    expect(shaLookupMode({ remaining: 5, resetAt: now + 1000, limit: 60 }, now)).toBe("stale_ok");
+    expect(shaLookupMode({ remaining: 1, resetAt: now + 1000, limit: 60 }, now)).toBe("blocked");
+  });
+  it("authenticated 5000/h keeps the spec's 500 / 100", () => {
+    expect(shaLookupMode({ remaining: 501, resetAt: now + 1000, limit: 5000 }, now)).toBe("fresh");
+    expect(shaLookupMode({ remaining: 499, resetAt: now + 1000, limit: 5000 }, now)).toBe("stale_ok");
+    expect(shaLookupMode({ remaining: 99, resetAt: now + 1000, limit: 5000 }, now)).toBe("blocked");
+  });
+});
+
 describe("repoMetaFromApi (FR-1.2)", () => {
   it("maps id, key and visibility", () => {
     const m = repoMetaFromApi({
