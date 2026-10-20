@@ -1,0 +1,37 @@
+PR 5 - public library + SEO (spec FR-6.1 - FR-6.8, FR-5.5 410s). Depends on PR 4 (#14) and PR 6a (#15), both live.
+
+Routes
+- /library: server-rendered index, 24 per page, ?page= ?level= ?lang=. Filtered/paged views are
+  noindex,follow with canonical /library. (Dynamic because of the query filters.)
+- /library/{owner}/{repo}: ISR (revalidate 3600, on-demand). Language, stars, levels, built-from commit.
+  Indexable only if >= 1 level is indexable.
+- /library/{owner}/{repo}/{level}-{slug} e.g. /101-beginner: ISR. Chapter 1 in full (server HTML),
+  chapter 2-3 titles locked, the FR-3.2 upgrade card (existing checkout; signed-in state resolved in
+  the browser), CTA to convert from the dashboard. Title/description/canonical/OG/Twitter via
+  generateMetadata; JSON-LD LearningResource (educationalLevel, isBasedOn, dateModified). Never names
+  the generator.
+- 308 (permanentRedirect) for other casings, bare "101", and renamed repos (repo_aliases).
+- Footer on every library page: "Own this repo? Request removal" -> /library/remove?repo=...
+- 410 + X-Robots-Tag: noindex from the proxy for repo/level paths whose versions were withdrawn or that
+  are on the do-not-cache list (public library_gone() RPC, boolean only; fails open to the page).
+- src/app/sitemap.ts (revalidate 3600): /, /library, indexable repo + level pages, lastmod = ready_at.
+- src/app/robots.ts: allow / and /library; disallow /api/, /admin, /dashboard, /conversion/, /conversions,
+  /settings, /profile, /auth/, /library/remove; sitemap link.
+- noindex,nofollow layouts for dashboard, conversion, conversions, settings, profile, auth, admin.
+
+Listing
+- When a version becomes ready (tryFinalize), computeListing sets listed = ready && still cache-eligible
+  (public, not do-not-cache, generator not guides_private) and indexable = listed && thin-content pass,
+  then revalidates the library paths.
+- Thin-content rule (FR-6.6): chapters 1-3 present, chapter 1 >= 600 words, ready, no empty headings,
+  no AI refusal text, <= 30% duplicate paragraphs, repo has README.
+- A public re-check after a first strike re-lists the repo's ready versions (strike undo).
+- Pages/sitemap only read ready + listed versions of repos with is_public = true (FR-6.7).
+
+Migration 20261020_cache_p5_library.sql: library_gone(repo_key, level) + partial index. Additive.
+
+Not in this PR (noted): ?sha=<short> older-version pages (FR-6.3); repo description (not stored);
+sitemap index split past 45,000 URLs (single file, capped).
+
+Tests: src/lib/library/library.test.ts (14 tests: slugs, 308 targets, title/description, JSON-LD, thin rule,
+410 path matching, listing/pagination). vitest 143/143. next build OK. eslint + tsc clean.
