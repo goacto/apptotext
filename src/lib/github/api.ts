@@ -97,6 +97,8 @@ export interface RepoMeta {
   stars: number;
   description: string | null;
   forks: number;
+  topics: string[];
+  owner_type: string | null;
 }
 
 export function repoMetaFromApi(d: Record<string, unknown>): RepoMeta {
@@ -119,6 +121,8 @@ export function repoMetaFromApi(d: Record<string, unknown>): RepoMeta {
     stars: Number(d.stargazers_count ?? 0),
     description: (d.description as string | null) ?? null,
     forks: Number(d.forks_count ?? 0),
+    topics: Array.isArray(d.topics) ? (d.topics as unknown[]).map(String) : [],
+    owner_type: ((d.owner as { type?: string } | undefined)?.type as string | undefined) ?? null,
   };
 }
 

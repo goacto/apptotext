@@ -61,6 +61,10 @@ export async function resolveRepo(admin: SupabaseClient, url: string): Promise<R
     },
     { onConflict: "github_repo_id" }
   );
+  // FR-5.4(a): every lookup re-reads visibility. A definite "private" withdraws shared guides now.
+  if (!isPublic) {
+    await admin.rpc("withdraw_repo", { p_github_repo_id: meta.github_repo_id, p_reason: "repo_private" });
+  }
   if (norm.repoKey !== meta.repo_key) {
     await admin
       .from("repo_aliases")

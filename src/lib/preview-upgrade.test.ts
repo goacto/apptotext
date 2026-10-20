@@ -28,7 +28,8 @@ describe("checkout return path", () => {
   it("allows only same-site guide pages", () => {
     expect(safeReturnPath("/conversion/1ff89436-21d4-4f42-90e2-af40b342d04e")).toBe("/conversion/1ff89436-21d4-4f42-90e2-af40b342d04e");
     expect(safeReturnPath("/library/vercel/next.js/101-beginner")).toBe("/library/vercel/next.js/101-beginner");
-    for (const bad of ["https://evil.com", "//evil.com", "/dashboard", "/conversion/../admin", "/library//evil.com", "/conversion/x?y=1", 5, null]) {
+    expect(safeReturnPath("/library/remove?request=abc-1&token=a2t-ff")).toBe("/library/remove?request=abc-1&token=a2t-ff");
+    for (const bad of ["https://evil.com", "//evil.com", "/dashboard", "/conversion/../admin", "/library//evil.com", "/conversion/x?next=//evil.com", "/conversion/x?y=<script>", 5, null]) {
       expect(safeReturnPath(bad)).toBeNull();
     }
   });
