@@ -1,0 +1,27 @@
+Fix: chapter 3 cut off at max_tokens. Ledger now records killed or aborted runs.
+
+Seen on prod 2026-10-20 at 3:21 PM ET: chapter 3 used all 8,192 output tokens and ended mid-code. The KEY_CONCEPTS
+block was missing.
+
+Changes
+- prompts.ts
+  - New length guide: "aim for 2,000-2,600 words, code included", short code examples, and "You MUST finish
+    the chapter ... shorten the main content rather than cutting off the ending".
+  - PROMPT_VERSION p1 -> p2, so new guides cache under the new prompt version.
+- CHAPTER_MAX_TOKENS = 10,000, chapters only; other calls keep 8,192.
+- provider.ts
+  - streamAI(..., opts) takes { maxTokens, signal, onStopReason }.
+  - Claude's stop_reason is surfaced, and an aborted or failed stream reports partial usage before erroring.
+- generate route, chapter phase
+  - A "started" ledger row is written before the AI call. A 15s heartbeat updates the estimated tokens and cost
+    (chars/3.4) and renews the cache lease.
+  - At the end the row becomes generated/failed/aborted with real usage. If Vercel kills the invocation anyway,
+    the row stays "started" with an estimate (usage_estimated = true).
+  - The model call is aborted at 265s, inside maxDuration 300. The route then records "aborted / deadline", marks
+    the cache version failed (refunding quota) and sends a done event with an error.
+  - A client disconnect aborts the upstream call (it stops paying for unseen tokens) and records "aborted / client_disconnected".
+  - The ledger detail is "truncated: max_tokens" whenever the model hits the cap.
+- Migration 20261020_ledger_started_rows.sql: outcome check now allows started/aborted; adds usage_estimated and finished_at.
+  DB backed up first to /workspace/out/apptotext-db-backup-pre-ledger-started.json.
+
+Checks: vitest 88/88 (new src/lib/ai/chapter-length-ledger.test.ts), tsc clean, no new eslint findings, next build OK.
