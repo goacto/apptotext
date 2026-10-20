@@ -3,6 +3,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { fetchRepoMeta, publicToken, shaLookupMode, getRateState, type RepoMeta } from "@/lib/github/api";
 import { sendEmail } from "@/lib/email";
 import { removalDoneEmail } from "@/lib/email/templates";
+import { relistRepo } from "@/lib/library/listing";
 
 /** PR 4: removal requests, do-not-cache, withdrawal and visibility checks. Service-role client only. */
 
@@ -128,6 +129,8 @@ export async function recheckRepoVisibility(
       .from("repos")
       .update({ is_public: true, private_strikes: 0, first_strike_at: null, last_checked_at: stamp })
       .eq("github_repo_id", repo.github_repo_id);
+    // A first strike unlisted everything as a precaution; a public result lists it again.
+    if (repo.first_strike_at) await relistRepo(admin, repo.github_repo_id);
     return "public";
   }
   const definitelyPrivate = Boolean(meta && (meta.private || meta.visibility !== "public"));
