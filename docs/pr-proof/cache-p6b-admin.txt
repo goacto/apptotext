@@ -1,0 +1,18 @@
+PR 6b - owner cache admin (spec FR-10). No migration.
+
+- /admin/cache (server-rendered, force-dynamic, noindex). Gate: signed-in user whose email is in
+  OWNER_EMAILS (comma list, case-insensitive). Anyone else, signed out, or OWNER_EMAILS unset -> 404.
+- Metrics (from the generations ledger): AI spend today ET vs AI_DAILY_CAP_USD, ready shared guides,
+  7/30/90-day generated, cache hits, hit rate, refused, failed/aborted, AI spend, and estimated $ saved
+  as a range (cache hits x LEVEL_COST_ESTIMATE low..high = $0.24..$0.42).
+- Tabs:
+  Requests: latest 100 removal requests. Approve = manual verification -> the same takedown() path
+    (withdraw + purge + optional do-not-cache + confirmation email via provider; logged-only while
+    RESEND_API_KEY/EMAIL_FROM are unset). Reject / Need info update status + event log.
+  Do-not-cache: list + Remove (only allows future caching, restores nothing).
+  Withdrawn: withdrawn guide versions with reason and time (ET).
+- Every server action re-checks the owner gate and validates the UUID.
+
+Tests: src/lib/admin/owner.test.ts (gate closed when unset, case-insensitive list, metric windows).
+vitest 132/132, next build OK, eslint clean on new files, tsc clean.
+Live: needs OWNER_EMAILS set in Vercel to view as owner; until then the page 404s for everyone.
