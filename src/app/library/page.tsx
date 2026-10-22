@@ -44,7 +44,11 @@ export default async function LibraryIndex({
     <main className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="text-3xl font-bold">Library</h1>
       <p className="mt-2 text-muted-foreground">
-        Guides built from public GitHub repositories. Chapter 1 of every level is free to read.
+        Guides built from public GitHub repositories. Chapter 1 of every level is free to read.{" "}
+        <Link href="/pricing" className="font-medium text-primary underline-offset-4 hover:underline">
+          See pricing
+        </Link>{" "}
+        to unlock full guides, flashcards and quizzes.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-2 text-sm">

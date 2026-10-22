@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { planFromSubscription } from "@/lib/plan-change";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -70,8 +71,18 @@ export async function POST(request: NextRequest) {
         const status = subscription.status;
 
         if (status === "active" || status === "trialing") {
-          // Keep existing subscription_status (standard/pro/master) — don't change tier on renewal
-          // Only downgrade to free if subscription is no longer active
+          // Plan changes (in-app upgrade now, scheduled downgrade at period end) arrive here.
+          // metadata.plan wins, else the item's amount. Idempotent: only the profile tied to this
+          // subscription is touched, and only when the stored plan differs.
+          const plan = planFromSubscription(subscription);
+          if (plan) {
+            await supabase
+              .from("profiles")
+              .update({ subscription_status: plan })
+              .eq("stripe_customer_id", customerId)
+              .eq("stripe_subscription_id", subscription.id)
+              .neq("subscription_status", plan);
+          }
         } else {
           await supabase
             .from("profiles")

@@ -26,6 +26,8 @@ import type { User } from "@supabase/supabase-js";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TutorChat } from "@/components/tutor-chat";
 import { GuidePreview } from "@/components/guides/guide-preview";
+import { LimitWallCard } from "@/components/upgrade/limit-wall-card";
+import { planFromStatus, type PlanTier } from "@/lib/subscription";
 import type { GuidePreview as GuidePreviewData } from "@/lib/cache/preview";
 import { TEXTBOOK_LEVELS, AI_PROVIDERS } from "@/lib/constants";
 import { exportToMarkdown, downloadMarkdown, exportToPDF } from "@/lib/export";
@@ -52,6 +54,12 @@ interface CachedLevel {
   sha: string;
   built_at: string;
   is_latest_sha: boolean;
+}
+
+class LimitReachedError extends Error {
+  constructor(message: string, readonly plan: PlanTier, readonly limit: number) {
+    super(message);
+  }
 }
 
 function builtAgo(iso: string): string {
@@ -104,6 +112,8 @@ function ConversionViewerContent() {
   const [cacheMap, setCacheMap] = useState<Record<number, CachedLevel>>({});
   // US-3: preview + upgrade card when a Free user has no generation left for a cached level.
   const [previews, setPreviews] = useState<Record<number, GuidePreviewData>>({});
+  // Limit wall: set when /api/generate refuses on the plan limit (403 limit_reached).
+  const [limitWall, setLimitWall] = useState<{ level: number; plan: PlanTier; limit: number } | null>(null);
 
   // Load bookmarks from localStorage
   useEffect(() => {
@@ -281,6 +291,13 @@ function ConversionViewerContent() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      if (response.status === 403 && errorData?.limit_reached) {
+        throw new LimitReachedError(
+          errorData.error,
+          planFromStatus(errorData.plan),
+          Number(errorData.limit) || 0
+        );
+      }
       throw new Error(
         errorData?.error || `Generation failed (${response.status})`
       );
@@ -303,6 +320,13 @@ function ConversionViewerContent() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      if (response.status === 403 && errorData?.limit_reached) {
+        throw new LimitReachedError(
+          errorData.error,
+          planFromStatus(errorData.plan),
+          Number(errorData.limit) || 0
+        );
+      }
       throw new Error(
         errorData?.error || `Generation failed (${response.status})`
       );
@@ -410,6 +434,7 @@ function ConversionViewerContent() {
 
     setIsGenerating(true);
     setGenerateError(null);
+    setLimitWall(null);
 
     try {
       // Stream 3 chapters sequentially with live preview
@@ -452,6 +477,10 @@ function ConversionViewerContent() {
       await fetchChapters();
     } catch (err) {
       await fetchChapters();
+      if (err instanceof LimitReachedError) {
+        setLimitWall({ level: activeLevel, plan: err.plan, limit: err.limit });
+        return;
+      }
       setGenerateError(
         err instanceof Error ? err.message : "Failed to generate content."
       );
@@ -705,6 +734,15 @@ function ConversionViewerContent() {
                               {generateError}
                             </p>
                           )}
+                        {limitWall && limitWall.level === level.level && (
+                          <div className="mb-6 flex w-full justify-center">
+                            <LimitWallCard
+                              plan={limitWall.plan}
+                              limit={limitWall.limit}
+                              returnTo={`/conversion/${conversion!.id}`}
+                            />
+                          </div>
+                        )}
                         {upgraded && cacheMap[level.level] && (
                           <p className="mb-4 text-sm font-medium text-primary">
                             Thanks for upgrading! Open the full guide below.
