@@ -24,15 +24,24 @@ export function LimitWallCard({ plan, limit, returnTo }: { plan: PlanTier; limit
     setError(null);
     setBusy(id);
     try {
-      // Paid users change plan in the billing portal, like the Pricing page's "Change Plan".
-      // A second Checkout would start a second subscription next to the current one.
-      const res = isPaid
-        ? await fetch("/api/stripe/portal", { method: "POST" })
-        : await fetch("/api/stripe/checkout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ plan: id, return_to: returnTo, source: "limit_wall" }),
-          });
+      if (isPaid) {
+        // Paid users switch tier in place (upgrade applies now, prorated on the next invoice).
+        // A second Checkout would start a second subscription next to the current one.
+        const res = await fetch("/api/stripe/change-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan: id }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not change your plan.");
+        window.location.reload();
+        return;
+      }
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: id, return_to: returnTo, source: "limit_wall" }),
+      });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) throw new Error(data?.error || "Could not start checkout.");
       window.location.href = data.url as string;
@@ -74,7 +83,7 @@ export function LimitWallCard({ plan, limit, returnTo }: { plan: PlanTier; limit
         <span>{options.length === 0
             ? "Thanks for being on our top plan."
             : isPaid
-              ? "Plan changes open your billing settings."
+              ? "Upgrades apply now; the prorated difference is added to your next invoice."
               : "We'll bring you right back to this guide."}</span>
         <Link href="/pricing" className="font-medium text-primary underline-offset-4 hover:underline">
           Compare plans

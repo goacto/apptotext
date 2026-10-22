@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 type PlanTier = "free" | "standard" | "pro" | "master";
+const TIER_ORDER: PlanTier[] = ["free", "standard", "pro", "master"];
 
 interface ProfileData {
   subscription_status: string;
@@ -185,6 +186,10 @@ export default function PricingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<PlanTier | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  // Billing portal (cancel / payment method) only shows when a portal config exists.
+  const [portalAvailable, setPortalAvailable] = useState(false);
+  const [changeLoading, setChangeLoading] = useState<PlanTier | null>(null);
+  const [changeMessage, setChangeMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -204,6 +209,12 @@ export default function PricingPage() {
 
           if (data) {
             setProfile(data as ProfileData);
+            if (data.subscription_status && data.subscription_status !== "free") {
+              fetch("/api/stripe/portal")
+                .then((r) => (r.ok ? r.json() : { available: false }))
+                .then((d) => setPortalAvailable(Boolean(d?.available)))
+                .catch(() => setPortalAvailable(false));
+            }
           }
         }
       } catch {
@@ -263,6 +274,38 @@ export default function PricingPage() {
     }
   }
 
+  async function handleChangePlan(plan: PlanTier) {
+    setCheckoutError(null);
+    setChangeMessage(null);
+    const target = tiers.find((t) => t.id === plan);
+    const upgrade = TIER_ORDER.indexOf(plan) > TIER_ORDER.indexOf(currentPlan);
+    const ok = window.confirm(
+      upgrade
+        ? `Switch to ${target?.name} (${target?.price}/month) now? You'll get the higher limit right away, and the prorated difference is added to your next invoice.`
+        : `Switch to ${target?.name} (${target?.price}/month) now? Your limit drops to the ${target?.name} limit right away, and unused time on your current plan is credited to your next invoice.`
+    );
+    if (!ok) return;
+    setChangeLoading(plan);
+    try {
+      const response = await fetch("/api/stripe/change-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        setCheckoutError(data?.error || "We couldn't change your plan.");
+        return;
+      }
+      setProfile((p) => (p ? { ...p, subscription_status: plan } : p));
+      setChangeMessage(`You're on ${target?.name} now.`);
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Network error");
+    } finally {
+      setChangeLoading(null);
+    }
+  }
+
   async function handleManageSubscription() {
     setPortalLoading(true);
     try {
@@ -313,6 +356,13 @@ export default function PricingPage() {
 
     // Paid tiers
     if (isCurrent) {
+      if (!portalAvailable) {
+        return (
+          <Button size="lg" className="w-full" disabled>
+            Current Plan
+          </Button>
+        );
+      }
       return (
         <Button
           size="lg"
@@ -326,28 +376,31 @@ export default function PricingPage() {
               Loading...
             </>
           ) : (
-            "Manage Subscription"
+            "Manage billing"
           )}
         </Button>
       );
     }
 
     if (isPaidPlan()) {
+      const upgrade = TIER_ORDER.indexOf(tier.id) > TIER_ORDER.indexOf(currentPlan);
       return (
         <Button
           size="lg"
           variant={tier.popular ? "default" : "outline"}
           className="w-full"
-          disabled={portalLoading}
-          onClick={handleManageSubscription}
+          disabled={changeLoading !== null}
+          onClick={() => handleChangePlan(tier.id)}
         >
-          {portalLoading ? (
+          {changeLoading === tier.id ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Loading...
+              Switching...
             </>
+          ) : upgrade ? (
+            `Upgrade to ${tier.name}`
           ) : (
-            "Change Plan"
+            `Switch to ${tier.name}`
           )}
         </Button>
       );
@@ -400,6 +453,11 @@ export default function PricingPage() {
         content counts.
       </div>
 
+      {changeMessage && (
+        <p className="mx-auto mt-6 max-w-md text-center text-sm font-medium text-primary" role="status">
+          {changeMessage}
+        </p>
+      )}
       {checkoutError && (
         <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-destructive/30 bg-destructive/10 px-6 py-4 text-center text-sm text-destructive">
           {checkoutError}

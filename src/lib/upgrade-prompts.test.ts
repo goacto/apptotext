@@ -59,9 +59,10 @@ describe("wiring", () => {
     expect(src).toContain("CHECKOUT_SOURCES.includes(body.source)");
     expect(src).not.toMatch(/prices\.create|products\.create|prices\.update|products\.update/);
   });
-  it("paid users change plan via the billing portal, never a second checkout", () => {
+  it("paid users switch tier in place via /api/stripe/change-plan, never a second checkout or the portal", () => {
     const src = read("src/components/upgrade/limit-wall-card.tsx");
-    expect(src).toMatch(/isPaid\s*\?\s*await fetch\("\/api\/stripe\/portal"/);
+    expect(src).toMatch(/if \(isPaid\) \{[\s\S]*?fetch\("\/api\/stripe\/change-plan"[\s\S]*?return;\s*\}/);
+    expect(src).not.toContain("/api/stripe/portal");
     expect(src).toContain('const isPaid = plan !== "free"');
   });
   it("conversion page shows the limit wall card on limit_reached", () => {

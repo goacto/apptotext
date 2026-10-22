@@ -103,6 +103,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       metadata: { user_id: user.id, plan, ...(source ? { source } : {}) },
+      // metadata.plan on the subscription lets the webhook track later plan changes.
+      subscription_data: { metadata: { user_id: user.id, plan } },
       success_url: returnTo ? `${APP_URL}${withQuery(returnTo, "upgraded", "1")}` : `${APP_URL}/dashboard?upgraded=true`,
       cancel_url: returnTo ? `${APP_URL}${returnTo}` : `${APP_URL}/pricing`,
     });
