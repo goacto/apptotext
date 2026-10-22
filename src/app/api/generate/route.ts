@@ -267,7 +267,11 @@ export async function POST(request: NextRequest) {
             master: `Monthly generation limit reached (${limit}). Your limit resets at the start of your next billing cycle.`,
           };
           const message = limitMessages[plan] ?? limitMessages.free;
-          return NextResponse.json({ error: message, upgrade_required: plan === "free" }, { status: 403 });
+          // limit_reached/plan/limit drive the upgrade card on the conversion page.
+          return NextResponse.json(
+            { error: message, upgrade_required: plan === "free", limit_reached: true, plan, limit },
+            { status: 403 }
+          );
         }
 
         // FR-8.3: daily AI spend cap. Cache hits returned above are never blocked.
