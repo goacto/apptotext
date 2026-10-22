@@ -35,3 +35,23 @@ export function removalDoneEmail(repo: string, neverCache: boolean) {
       .join("\n"),
   };
 }
+
+/** Sent once when a subscription checkout completes. Stripe sends the payment receipt itself. */
+export function subscriptionWelcomeEmail(planName: string, priceCents: number, limit: number) {
+  const price = `$${(priceCents / 100).toFixed(2)}`;
+  return {
+    subject: `Welcome to AppToText ${planName}`,
+    template: "subscription_welcome",
+    text: [
+      `Thanks for subscribing to AppToText ${planName} (${price}/month).`,
+      "",
+      `Your plan includes ${limit} guide generations per month, plus full chapters, flashcards and quizzes.`,
+      `Start a guide: ${APP_URL}/dashboard`,
+      `Manage your plan: ${APP_URL}/pricing`,
+      "",
+      "Stripe emails your payment receipt separately.",
+      "",
+      "— The AppToText team",
+    ].join("\n"),
+  };
+}
