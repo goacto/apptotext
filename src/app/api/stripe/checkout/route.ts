@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 import { ACTIVE_SUBSCRIPTION_MESSAGE, findActiveSubscription } from "@/lib/subscription-guard";
-import { PAID_PLANS, safeReturnPath, withQuery, type PaidPlan } from "@/lib/plans";
+import { CHECKOUT_SOURCES, PAID_PLANS, safeReturnPath, withQuery, type CheckoutSource, type PaidPlan } from "@/lib/plans";
 
 export const maxDuration = 30;
 
@@ -38,14 +38,14 @@ export async function POST(request: NextRequest) {
     let plan: PlanTier = "pro";
     // Upgrade card (FR-3.2): return to the same guide and tag the session for metrics.
     let returnTo: string | null = null;
-    let source: "guide_preview" | null = null;
+    let source: CheckoutSource | null = null;
     try {
       const body = await request.json();
       if (body.plan && body.plan in PLAN_CONFIG) {
         plan = body.plan as PlanTier;
       }
       returnTo = safeReturnPath(body.return_to);
-      if (body.source === "guide_preview") source = "guide_preview";
+      if (CHECKOUT_SOURCES.includes(body.source)) source = body.source as CheckoutSource;
     } catch {
       // Default to pro if no body or invalid JSON
     }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Loader2, BookOpen, Layers, HelpCircle } from "lucide-react";
+import Link from "next/link";
+import { Lock, Loader2, BookOpen, Layers, HelpCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
-import { formatPrice } from "@/lib/plans";
+import { PAID_PLANS, formatPrice } from "@/lib/plans";
 import type { GuidePreview as Preview } from "@/lib/cache/preview";
 
 /**
@@ -63,6 +64,30 @@ export function GuidePreview({
           </CardContent>
         </Card>
       )}
+
+      {/* Chapter-1 cutoff CTA: the free preview ends here. */}
+      <div
+        data-testid="preview-cutoff-cta"
+        className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <p className="flex items-center gap-2 font-semibold">
+            <Sparkles className="size-4 text-primary" aria-hidden />
+            That&apos;s the end of the free preview
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Keep reading: {preview.locked_chapters.length} more{" "}
+            {preview.locked_chapters.length === 1 ? "chapter" : "chapters"}, {preview.flashcard_count} flashcards and a{" "}
+            {preview.quiz_count}-question quiz. From {formatPrice(Math.min(...PAID_PLANS.map((p) => p.priceCents)))}/month.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <Button onClick={focusUpgrade}>Unlock the full guide</Button>
+          <Link href="/pricing" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Pricing
+          </Link>
+        </div>
+      </div>
 
       <div className="space-y-2" aria-label="Locked content">
         {preview.locked_chapters.map((c) => (
