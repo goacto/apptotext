@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
+import { ACTIVE_SUBSCRIPTION_MESSAGE, findActiveSubscription } from "@/lib/subscription-guard";
 import { PAID_PLANS, safeReturnPath, withQuery, type PaidPlan } from "@/lib/plans";
 
 export const maxDuration = 30;
@@ -54,11 +55,20 @@ export async function POST(request: NextRequest) {
     // Get or create Stripe customer
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, email")
+      .select("stripe_customer_id, email, subscription_status, stripe_subscription_id")
       .eq("id", user.id)
       .single();
 
     let customerId = profile?.stripe_customer_id;
+
+    // Refuse a second subscription: existing subscribers change plans in the billing portal.
+    const existing = await findActiveSubscription(profile, customerId, getStripe());
+    if (existing) {
+      return NextResponse.json(
+        { error: ACTIVE_SUBSCRIPTION_MESSAGE, code: "active_subscription", manage_url: "/pricing" },
+        { status: 409 }
+      );
+    }
 
     if (!customerId) {
       const customer = await getStripe().customers.create({
