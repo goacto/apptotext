@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
+import { subscriptionWelcomeEmail } from "@/lib/email/templates";
+import { PAID_PLANS } from "@/lib/plans";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -42,6 +45,14 @@ export async function POST(request: NextRequest) {
         const subscriptionStatus = validPlans.includes(plan) ? plan : "pro";
 
         if (userId && session.subscription) {
+          const subscriptionId =
+            typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+          // Read before writing so a retried webhook for the same subscription sends no second email.
+          const { data: before } = await supabase
+            .from("profiles")
+            .select("stripe_subscription_id, email")
+            .eq("id", userId)
+            .maybeSingle();
           await supabase
             .from("profiles")
             .update({
@@ -56,6 +67,15 @@ export async function POST(request: NextRequest) {
                   : session.customer?.id ?? null,
             })
             .eq("id", userId);
+
+          // Welcome email: a no-op log unless RESEND_API_KEY and EMAIL_FROM are set in production.
+          const to = session.customer_details?.email ?? (before?.email as string | undefined);
+          const planInfo = PAID_PLANS.find((p) => p.id === subscriptionStatus);
+          if (to && planInfo && before?.stripe_subscription_id !== subscriptionId) {
+            const mail = subscriptionWelcomeEmail(planInfo.name, planInfo.priceCents, planInfo.limit);
+            const sent = await sendEmail({ to, ...mail });
+            if (sent.error) console.error("welcome email failed", sent.error);
+          }
         }
         break;
       }
