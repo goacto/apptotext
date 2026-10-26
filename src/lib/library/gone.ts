@@ -19,8 +19,9 @@ export const GONE_HTML =
   '<p>It was removed from the AppToText library.</p><p><a href="/library">Browse the library</a></p></body></html>';
 
 /**
- * Calls library_gone() with the service role. anon and PUBLIC cannot execute it.
- * Fails open (returns false) on any error or when the service role key is unset.
+ * Calls library_gone() with the service role. That role already has EXECUTE
+ * on the current database (20261020_cache_p5_library.sql). Fails open
+ * (returns false) on any error or when the service role key is unset.
  * The key stays on the server (this module is imported from the proxy only).
  */
 export async function isLibraryGone(repoKey: string, level: number | null, timeoutMs = 1500): Promise<boolean> {

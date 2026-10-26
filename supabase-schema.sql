@@ -252,21 +252,12 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$$ language plpgsql security definer set search_path = public;
+$$ language plpgsql security definer;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
--- Trigger only. anon, authenticated, and PUBLIC cannot call this as an RPC.
-revoke execute on function public.handle_new_user() from public, anon, authenticated;
-do $$
-begin
-  if exists (select 1 from pg_roles where rolname = 'supabase_auth_admin') then
-    grant execute on function public.handle_new_user() to supabase_auth_admin;
-  end if;
-end $$;
 
 -- ============================================================
 -- FUNCTION: Increment user XP
@@ -279,7 +270,7 @@ begin
       last_activity = now()
   where id = user_id_input;
 end;
-$$ language plpgsql security definer set search_path = public;
+$$ language plpgsql security definer;
 
 -- ============================================================
 -- INDEXES
@@ -298,7 +289,7 @@ create index if not exists idx_profiles_total_xp on public.profiles(total_xp des
 revoke select on public.profiles from anon;
 
 create or replace view public.public_profiles
-  with (security_invoker = true) as
+  with (security_invoker = false) as
   select id, display_name, avatar_url, total_xp, current_streak, longest_streak
   from public.profiles;
 revoke all on public.public_profiles from anon, authenticated;
@@ -833,7 +824,7 @@ grant execute on function public.ai_spend_today_et() to service_role;
 
 create index if not exists generations_created_at on public.generations (created_at desc);
 
--- PR 5: public library. The Next.js proxy calls this with the service role, not the anon key.
+-- PR 5: public library. Additive. One read-only function the proxy can call with the anon key.
 -- library_gone(repo, level): true when nothing is listed for that repo/level any more AND it was
 -- withdrawn or is on the do-not-cache list (-> 410 + noindex). Otherwise false (page renders or 404s).
 -- Returns only a boolean about a public repo key; no content, users or reasons.
@@ -865,8 +856,8 @@ language sql stable security definer set search_path = public as $$
       )
     );
 $$;
-revoke execute on function public.library_gone(text, integer) from public, anon;
-grant execute on function public.library_gone(text, integer) to authenticated, service_role;
+revoke execute on function public.library_gone(text, integer) from public;
+grant execute on function public.library_gone(text, integer) to anon, authenticated, service_role;
 
 create index if not exists idx_guide_versions_listed
   on public.guide_versions (github_repo_id, level, ready_at desc) where status = 'ready' and listed;
