@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { TextbookLevel } from "@/lib/types";
 import { XP_REWARDS } from "@/lib/constants";
 import { rateLimit } from "@/lib/rate-limit";
+import { clientIdError, parseQuizAnswers } from "@/lib/ai/input-limits";
 
 interface QuizSubmitBody {
   conversion_id: string;
@@ -45,11 +46,9 @@ export async function POST(request: NextRequest) {
 
     const body: QuizSubmitBody = await request.json();
 
-    if (!body.conversion_id || typeof body.conversion_id !== "string") {
-      return NextResponse.json(
-        { error: "conversion_id is required" },
-        { status: 400 }
-      );
+    const conversionIdError = clientIdError(body.conversion_id, "conversion_id");
+    if (conversionIdError) {
+      return NextResponse.json({ error: conversionIdError }, { status: 400 });
     }
 
     if (!body.level || !VALID_LEVELS.includes(body.level)) {
@@ -59,25 +58,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Array.isArray(body.answers) || body.answers.length === 0) {
-      return NextResponse.json(
-        { error: "answers array is required and must not be empty" },
-        { status: 400 }
-      );
+    const parsedAnswers = parseQuizAnswers(body.answers);
+    if (!parsedAnswers.ok) {
+      return NextResponse.json({ error: parsedAnswers.error }, { status: 400 });
     }
-
-    // Validate each answer has the required fields
-    for (const answer of body.answers) {
-      if (!answer.question_id || typeof answer.selected !== "number") {
-        return NextResponse.json(
-          { error: "Each answer must have question_id (string) and selected (number)" },
-          { status: 400 }
-        );
-      }
-    }
+    const answers = parsedAnswers.answers;
 
     // Fetch the quiz questions for this conversion and level
-    const questionIds = body.answers.map((a) => a.question_id);
+    const questionIds = answers.map((a) => a.question_id);
     const { data: questions, error: fetchError } = await supabase
       .from("quiz_questions")
       .select("id, correct_answer, conversion_id, level")
@@ -115,7 +103,7 @@ export async function POST(request: NextRequest) {
     const results: QuizResult[] = [];
     let correctCount = 0;
 
-    for (const answer of body.answers) {
+    for (const answer of answers) {
       const correctAnswer = questionMap.get(answer.question_id);
       if (correctAnswer === undefined) {
         continue; // Skip answers for questions not found

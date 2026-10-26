@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { XP_REWARDS } from "@/lib/constants";
 import { rateLimit } from "@/lib/rate-limit";
 import { calculateSM2 } from "@/lib/sm2";
+import { clientIdError } from "@/lib/ai/input-limits";
 
 interface FlashcardReviewBody {
   flashcard_id: string;
@@ -41,11 +42,9 @@ export async function POST(request: NextRequest) {
 
     const body: FlashcardReviewBody = await request.json();
 
-    if (!body.flashcard_id || typeof body.flashcard_id !== "string") {
-      return NextResponse.json(
-        { error: "flashcard_id is required" },
-        { status: 400 }
-      );
+    const flashcardIdError = clientIdError(body.flashcard_id, "flashcard_id");
+    if (flashcardIdError) {
+      return NextResponse.json({ error: flashcardIdError }, { status: 400 });
     }
 
     if (typeof body.quality !== "number" || body.quality < 0 || body.quality > 5) {
