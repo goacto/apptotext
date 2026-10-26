@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/cron-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchRepoMeta, publicToken } from "@/lib/github/api";
 import {
@@ -21,12 +22,13 @@ const REQUESTS_PER_RUN = 20;
  *  1. purge of any withdrawn version still holding content (FR-5.5 safety net),
  *  2. visibility re-check of repos with live versions (FR-5.4), within the GitHub budget,
  *  3. repo-proof checks for pending removal requests up to 7 days old (FR-7.2b).
- * Auth: Bearer CRON_SECRET when that env var is set. Without it, the job is still harmless to
- * trigger: it is idempotent and runs at most once per 20 hours (cron_runs).
+ * Auth fails closed. A request is allowed when Authorization matches CRON_SECRET, or when
+ * Vercel sends x-vercel-cron-schedule (the header on every cron invocation). With the
+ * secret unset, a request that has neither is 401. The schedule header can be spoofed;
+ * set CRON_SECRET in the host to require the bearer token. This route does not define it.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!cronAuthorized((name) => request.headers.get(name))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const admin = createAdminClient();

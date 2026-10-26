@@ -18,10 +18,14 @@ export const GONE_HTML =
   '<body style="font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem"><h1>This guide is no longer available</h1>' +
   '<p>It was removed from the AppToText library.</p><p><a href="/library">Browse the library</a></p></body></html>';
 
-/** Calls the public library_gone() RPC with the anon key. Fails open (returns false) on any error. */
+/**
+ * Calls library_gone() with the service role. anon and PUBLIC cannot execute it.
+ * Fails open (returns false) on any error or when the service role key is unset.
+ * The key stays on the server (this module is imported from the proxy only).
+ */
 export async function isLibraryGone(repoKey: string, level: number | null, timeoutMs = 1500): Promise<boolean> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return false;
   try {
     const res = await fetch(`${url}/rest/v1/rpc/library_gone`, {

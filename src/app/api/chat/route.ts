@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { AIProvider } from "@/lib/types";
 import { streamAI } from "@/lib/ai/provider";
+import { prepareChatInput } from "@/lib/ai/input-limits";
 import { rateLimit } from "@/lib/rate-limit";
 
 // Hobby + Fluid compute allows up to 300s. A full Sonnet 4.6 chapter (max_tokens 8192) takes ~1.5–2 min,
@@ -9,10 +10,10 @@ import { rateLimit } from "@/lib/rate-limit";
 export const maxDuration = 300;
 
 interface ChatRequestBody {
-  conversion_id: string;
-  chapter_id: string;
-  message: string;
-  history: { role: "user" | "assistant"; content: string }[];
+  conversion_id?: string;
+  chapter_id?: string;
+  message?: unknown;
+  history?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -39,13 +40,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body: ChatRequestBody = await request.json();
-
-    if (!body.message?.trim()) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 }
-      );
+    const body = (await request.json()) as ChatRequestBody;
+    const chatInput = prepareChatInput(body.message, body.history);
+    if (!chatInput.ok) {
+      return NextResponse.json({ error: chatInput.error }, { status: 400 });
     }
 
     // Fetch the chapter content for context
@@ -84,16 +82,11 @@ Guidelines:
 - Use code examples when relevant
 - Encourage the GOACTO spirit — Growing Ourselves And Contributing To Others`;
 
-    // Build messages: system + history (last 10 messages) + new message
-    const historyMessages = (body.history || []).slice(-10).map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
-
+    // Server prompt only. Client history is already capped to user/assistant turns.
     const messages = [
       { role: "system" as const, content: systemPrompt },
-      ...historyMessages,
-      { role: "user" as const, content: body.message },
+      ...chatInput.history,
+      { role: "user" as const, content: chatInput.message },
     ];
 
     // Stream the response

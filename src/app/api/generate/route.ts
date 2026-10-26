@@ -35,6 +35,7 @@ import {
   regenerateBlocked,
   REGENERATE_COOLDOWN_MESSAGE,
 } from "@/lib/limits";
+import { clientIdError } from "@/lib/ai/input-limits";
 
 type GeneratePhase = "chapter" | "flashcards" | "quiz";
 
@@ -154,11 +155,9 @@ export async function POST(request: NextRequest) {
 
     const body: GenerateRequestBody = await request.json();
 
-    if (!body.conversion_id || typeof body.conversion_id !== "string") {
-      return NextResponse.json(
-        { error: "conversion_id is required" },
-        { status: 400 }
-      );
+    const conversionIdError = clientIdError(body.conversion_id, "conversion_id");
+    if (conversionIdError) {
+      return NextResponse.json({ error: conversionIdError }, { status: 400 });
     }
 
     if (!body.level || !VALID_LEVELS.includes(body.level)) {
